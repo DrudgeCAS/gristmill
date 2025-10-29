@@ -1150,7 +1150,7 @@ class CPrinter(NaiveCodePrinter):
     def form_loop_open(self, ctx):
         """Form the loop opening for C.
         """
-        return 'for({index}={lower}; {index}<{upper}, {index}++)'.format(
+        return 'for({index}={lower}; {index}<{upper}; {index}++)'.format(
             index=ctx.index, lower=ctx.lower, upper=ctx.upper
         ) + ' {'
 
@@ -1170,7 +1170,7 @@ class CPrinter(NaiveCodePrinter):
         """
         ctx = event.comput.ctx
 
-        return '{} {}{}'.format('double', ctx.base, ''.join(
+        return '{} {}{};'.format('double', ctx.base, ''.join(
             '[{}]'.format(i.size) for i in ctx.indices
         ))
 

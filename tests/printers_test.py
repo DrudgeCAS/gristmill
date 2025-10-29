@@ -9,7 +9,7 @@ from sympy import Symbol, IndexedBase, symbols
 from sympy.printing.python import PythonPrinter
 
 from drudge import Drudge, Range
-from gristmill import BasePrinter, FortranPrinter, EinsumPrinter, mangle_base
+from gristmill import BasePrinter, CPrinter, FortranPrinter, EinsumPrinter, mangle_base
 from gristmill.generate import (
     TensorDecl, BeginBody, BeforeComp, CompTerm, OutOfUse, EndBody
 )
@@ -291,6 +291,24 @@ def _test_fortran_code(code, dir):
     return True
 
 
+def _test_c_code(code, dir):
+    """Test the given C code in the given directory.
+
+    The C code is expected to generate an output of ``OK``.
+    """
+
+    orig_cwd = dir.chdir()
+
+    dir.join('test.c').write(code)
+    stat = subprocess.run(['gcc', '-o', 'test', 'test.c', '-lm'])
+    assert stat.returncode == 0
+    stat = subprocess.run(['./test'], stdout=subprocess.PIPE)
+    assert stat.stdout.decode().strip() == 'OK'
+
+    orig_cwd.chdir()
+    return True
+
+
 def test_fortran_colourful(colourful_tensor, tmpdir):
     """Test the Fortran printer for colour tensor computations."""
 
@@ -407,6 +425,241 @@ end if
 write(*, *) "OK"
 
 end program main
+"""
+
+
+def test_c_colourful(colourful_tensor, tmpdir):
+    """Test the C printer for colour tensor computations."""
+
+    tensor = colourful_tensor
+
+    printer = CPrinter()
+    evals = printer.doprint([tensor])
+
+    code = _C_BASIC_TEST_CODE.format(evals=evals)
+    assert _test_c_code(code, tmpdir)
+
+
+_C_BASIC_TEST_CODE = """
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
+
+#define n 100
+
+void random_fill(double mat[n][n]) {{
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            mat[i][j] = (double)rand() / RAND_MAX;
+        }}
+    }}
+}}
+
+void matmul(double a[n][n], double b[n][n], double result[n][n]) {{
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            result[i][j] = 0.0;
+            for (int k = 0; k < n; k++) {{
+                result[i][j] += a[i][k] * b[k][j];
+            }}
+        }}
+    }}
+}}
+
+int main() {{
+    srand(42);
+    
+    double r = 6.0;
+    double s = 2.0;
+    int a, b, c;
+    
+    double u[n][n];
+    double v[n][n];
+    double x[n][n];
+    
+    double diag[n][n];
+    double expected[n][n];
+    double u_squared[n][n];
+    double temp[n][n];
+    
+    random_fill(u);
+    random_fill(v);
+    
+    {evals}
+    
+    // Initialize diag to zero
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            diag[i][j] = 0.0;
+        }}
+    }}
+    
+    // Set diagonal elements (adjusted for 0-based indexing)
+    for (a = 0; a < n; a++) {{
+        diag[a][a] = (double)((a) * (a)) / 2.0;
+    }}
+    
+    // Compute expected: transpose(u)^2 * 2 * r / (3 * s)
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            u_squared[i][j] = u[j][i] * u[j][i];
+        }}
+    }}
+    
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            expected[i][j] = u_squared[i][j] * 2.0 * r / (3.0 * s);
+        }}
+    }}
+    
+    // Compute temp = matmul(diag, v)
+    matmul(diag, v, temp);
+    
+    // Subtract matmul(u, temp) from expected
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            double sum = 0.0;
+            for (int k = 0; k < n; k++) {{
+                sum += u[i][k] * temp[k][j];
+            }}
+            expected[i][j] -= sum;
+        }}
+    }}
+    
+    // Check if results match
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            if (fabs(expected[i][j]) > 1.0E-10) {{
+                double rel_err = fabs(x[i][j] - expected[i][j]) / fabs(expected[i][j]);
+                if (rel_err > 1.0E-5) {{
+                    printf("WRONG\\n");
+                    return 1;
+                }}
+            }}
+        }}
+    }}
+    
+    printf("OK\\n");
+    return 0;
+}}
+"""
+
+
+def test_full_c_printer(eval_seq_deps, tmpdir):
+    """Test the C printer for full evaluation."""
+
+    eval_seq = eval_seq_deps
+
+    printer = CPrinter()
+    evals = printer.doprint(eval_seq)
+
+    code = _C_FULL_TEST_CODE.format(eval=evals)
+    assert _test_c_code(code, tmpdir)
+
+    sep_code = printer.doprint(eval_seq, separate_decls=True)
+    assert len(sep_code) == 2
+    assert evals == '\n'.join(sep_code)
+
+
+_C_FULL_TEST_CODE = """
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
+
+#define n 10
+
+void random_fill(double mat[n][n]) {{
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            mat[i][j] = (double)rand() / RAND_MAX;
+        }}
+    }}
+}}
+
+void matmul(double a[n][n], double b[n][n], double result[n][n]) {{
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            result[i][j] = 0.0;
+            for (int k = 0; k < n; k++) {{
+                result[i][j] += a[i][k] * b[k][j];
+            }}
+        }}
+    }}
+}}
+
+double trace(double mat[n][n]) {{
+    double tr = 0.0;
+    for (int i = 0; i < n; i++) {{
+        tr += mat[i][i];
+    }}
+    return tr;
+}}
+
+int main() {{
+    srand(42);
+    
+    int a, b, c;
+    double X[n][n];
+    double Y[n][n];
+    double R1[n][n];
+    double R2[n][n];
+    
+    random_fill(X);
+    random_fill(Y);
+    
+    {{
+        {eval}
+    }}
+    
+    // Compute expected results
+    double XY[n][n];
+    double YX[n][n];
+    double expected_R1[n][n];
+    double expected_R2[n][n];
+    
+    matmul(X, Y, XY);
+    matmul(Y, X, YX);
+    
+    double tr = trace(XY);
+    
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            expected_R1[i][j] = XY[i][j] * tr + YX[i][j];
+            expected_R2[i][j] = XY[i][j] * 2.0;
+        }}
+    }}
+    
+    // Check R1
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            if (fabs(expected_R1[i][j]) > 1.0E-10) {{
+                double rel_err = fabs(R1[i][j] - expected_R1[i][j]) / fabs(expected_R1[i][j]);
+                if (rel_err > 1.0E-5) {{
+                    printf("WRONG\\n");
+                    return 1;
+                }}
+            }}
+        }}
+    }}
+    
+    // Check R2
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            if (fabs(expected_R2[i][j]) > 1.0E-10) {{
+                double rel_err = fabs(R2[i][j] - expected_R2[i][j]) / fabs(expected_R2[i][j]);
+                if (rel_err > 1.0E-5) {{
+                    printf("WRONG\\n");
+                    return 1;
+                }}
+            }}
+        }}
+    }}
+    
+    printf("OK\\n");
+    return 0;
+}}
 """
 
 
