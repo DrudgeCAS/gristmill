@@ -7,9 +7,8 @@ from setuptools import setup, find_packages, Extension
 
 PROJ_ROOT = os.path.dirname(os.path.abspath(__file__))
 INCLUDE_DIRS = [
-    os.path.join(PROJ_ROOT, 'deps', 'cpypp', 'include'),
-    os.path.join(PROJ_ROOT, 'deps', 'libparenth', 'deps', 'fbitset', 'include'),
-    os.path.join(PROJ_ROOT, 'deps', 'libparenth', 'include'),
+    os.path.join(PROJ_ROOT, 'deps', i, 'include')
+    for i in ['cpypp', 'fbitset', 'libparenth']
 ]
 
 # Platform-specific compiler flags
