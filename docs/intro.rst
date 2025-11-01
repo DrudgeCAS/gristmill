@@ -10,6 +10,7 @@ definitions can be given to the :py:func:`optimize` function, then a
 mathematically-equivalent list of tensor definitions will be returned, possibly
 incurring much less arithmetic cost.   For any iterable of tensor definitions,
 whether from the gristmill optimizer or not, the code printers
-:py:class:`FortranPrinter`, :py:class:`CPrinter`, and
-:py:class:`EinsumPrinter` can be used to generate code automatically.  The exact
-form of the generated code is very tunable.
+:py:class:`FortranPrinter`, :py:class:`CPrinter`,
+:py:class:`EinsumPrinter`, and :py:class:`OMEinsumPrinter` can be used to
+generate code automatically.  The exact form of the generated code is very
+tunable.

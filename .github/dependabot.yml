@@ -24,7 +24,6 @@ updates:
     # Reviewers will be assigned automatically by repository settings
     labels:
       - "dependencies"
-      - "python"
     open-pull-requests-limit: 5
     # Allow both direct and indirect dependency updates
     allow:

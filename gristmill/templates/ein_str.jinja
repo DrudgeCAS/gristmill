@@ -1,0 +1,64 @@
+{%- if n_exts == 0 -%}
+    {{ base }} {{ term.phase }}{{ '= ' }}
+    {%- if term.numerator == '1' -%}
+        {%- if term.denominator != '1' -%}
+            {{ '1.0 / ' }}{{ term.denominator }}{{ ' * ' }}
+        {%- endif -%}
+    {%- else -%}
+        {{ term.numerator }}
+        {%- if term.denominator != '1' -%}
+            {{ ' / ' }}{{ term.denominator }}
+        {%- endif -%}
+    {%- endif -%}
+    {%- if term.indexed_factors | length != 0 -%}
+        {%- if term.numerator != '1' -%}
+            {{ ' * ' }}
+        {%- endif -%}
+        {{ ein }}"
+        {%- for factor in term.indexed_factors -%}
+            {%- for i in factor.indices -%}
+                {{ i.index }}
+            {%- endfor -%}
+            {%- if not loop.last -%}
+                {{ ',' }}
+            {%- endif -%}
+        {%- endfor -%}->"(
+        {%- for factor in term.indexed_factors -%}
+            {{ factor.base }}
+            {%- if not loop.last -%}
+                {{ ', '}}
+            {%- endif -%}
+        {%- endfor -%})[]
+    {%- endif -%}
+{%- else -%}
+    {%- if term.single_factor -%}
+        {{ base }} {{ '.' }}{{ term.phase }}{{ '= ' }}
+        {%- if term.numerator != '1' -%}
+            {{ term.numerator }}{{ ' .* ' }}
+        {%- endif -%}
+    {%- else -%}
+        {{ 'fac = ' }}{{ term.numerator }}
+        {%- if term.denominator != '1' -%}
+            {{ ' / ' }}{{ term.denominator }}
+        {%- endif -%}
+        {{ '\n' }}{{ base }} {{ '.' }}{{ term.phase }}{{ '= fac .* ' }}
+    {%- endif -%}
+    {{ ein }}"
+    {%- for factor in term.indexed_factors -%}
+        {%- for i in factor.indices -%}
+            {{ i.index }}
+        {%- endfor -%}
+        {%- if not loop.last -%}
+            {{ ',' }}
+        {%- endif -%}
+    {%- endfor -%}->
+    {%- for i in indices -%}
+        {{ i.index }}
+    {%- endfor -%}"(
+    {%- for factor in term.indexed_factors -%}
+        {{ factor.base }}
+        {%- if not loop.last -%}
+            {{ ', '}}
+        {%- endif -%}
+    {%- endfor -%})
+{%- endif -%}

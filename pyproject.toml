@@ -12,7 +12,9 @@ dependencies = [
   "jinja2",
   "sympy>=1.14",
   "numpy",
-  "networkx>=2.0"
+  "networkx>=2.0",
+  "ipython>=9.0",
+  "ipykernel>=7.1.0"
 ]
 classifiers = [
   'Development Status :: 4 - Beta',
@@ -34,7 +36,7 @@ maintainers = [
 
 [project.optional-dependencies]
 docs = ["sphinx"]
-dev = ["pytest"]
+dev = ["pytest", "juliacall>=0.9.20"]
 
 [project.urls]
 Homepage = "https://github.com/DrudgeCAS/gristmill"

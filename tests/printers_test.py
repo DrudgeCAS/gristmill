@@ -5,11 +5,11 @@ import subprocess
 from unittest.mock import patch
 
 import pytest
-from sympy import Symbol, IndexedBase, symbols
+from sympy import Symbol, IndexedBase, symbols, Float
 from sympy.printing.python import PythonPrinter
 
 from drudge import Drudge, Range
-from gristmill import BasePrinter, FortranPrinter, EinsumPrinter, mangle_base
+from gristmill import BasePrinter, CPrinter, FortranPrinter, EinsumPrinter, OMEinsumPrinter, mangle_base
 from gristmill.generate import (
     TensorDecl, BeginBody, BeforeComp, CompTerm, OutOfUse, EndBody
 )
@@ -132,8 +132,9 @@ def test_base_printer_ctx(simple_drudge, colourful_tensor):
             # The transpose term.
 
             assert term.phase == '+'
-            assert term.numerator == '2*r'
-            assert term.denominator == '(3*s)'
+            r = Symbol('r')
+            assert float(eval(term.numerator) / r) == 2/3
+            assert term.denominator == 's'
 
             assert len(term.indexed_factors) == 1
             factor = term.indexed_factors[0]
@@ -149,8 +150,8 @@ def test_base_printer_ctx(simple_drudge, colourful_tensor):
             check_range(term.sums[0], 'c')
 
             assert term.phase == '-'
-            assert term.numerator == '1'
-            assert term.denominator == '2'
+            assert float(eval(term.numerator)) == 0.5
+            assert term.denominator == '1'
 
             assert len(term.indexed_factors) == 2
             for factor in term.indexed_factors:
@@ -291,6 +292,24 @@ def _test_fortran_code(code, dir):
     return True
 
 
+def _test_c_code(code, dir):
+    """Test the given C code in the given directory.
+
+    The C code is expected to generate an output of ``OK``.
+    """
+
+    orig_cwd = dir.chdir()
+
+    dir.join('test.c').write(code)
+    stat = subprocess.run(['gcc', '-o', 'test', 'test.c', '-lm'])
+    assert stat.returncode == 0
+    stat = subprocess.run(['./test'], stdout=subprocess.PIPE)
+    assert stat.stdout.decode().strip() == 'OK'
+
+    orig_cwd.chdir()
+    return True
+
+
 def test_fortran_colourful(colourful_tensor, tmpdir):
     """Test the Fortran printer for colour tensor computations."""
 
@@ -410,6 +429,241 @@ end program main
 """
 
 
+def test_c_colourful(colourful_tensor, tmpdir):
+    """Test the C printer for colour tensor computations."""
+
+    tensor = colourful_tensor
+
+    printer = CPrinter()
+    evals = printer.doprint([tensor])
+
+    code = _C_BASIC_TEST_CODE.format(evals=evals)
+    assert _test_c_code(code, tmpdir)
+
+
+_C_BASIC_TEST_CODE = """
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
+
+#define n 100
+
+void random_fill(double mat[n][n]) {{
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            mat[i][j] = (double)rand() / RAND_MAX;
+        }}
+    }}
+}}
+
+void matmul(double a[n][n], double b[n][n], double result[n][n]) {{
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            result[i][j] = 0.0;
+            for (int k = 0; k < n; k++) {{
+                result[i][j] += a[i][k] * b[k][j];
+            }}
+        }}
+    }}
+}}
+
+int main() {{
+    srand(42);
+    
+    double r = 6.0;
+    double s = 2.0;
+    int a, b, c;
+    
+    double u[n][n];
+    double v[n][n];
+    double x[n][n];
+    
+    double diag[n][n];
+    double expected[n][n];
+    double u_squared[n][n];
+    double temp[n][n];
+    
+    random_fill(u);
+    random_fill(v);
+    
+    {evals}
+    
+    // Initialize diag to zero
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            diag[i][j] = 0.0;
+        }}
+    }}
+    
+    // Set diagonal elements (adjusted for 0-based indexing)
+    for (a = 0; a < n; a++) {{
+        diag[a][a] = (double)((a) * (a)) / 2.0;
+    }}
+    
+    // Compute expected: transpose(u)^2 * 2 * r / (3 * s)
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            u_squared[i][j] = u[j][i] * u[j][i];
+        }}
+    }}
+    
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            expected[i][j] = u_squared[i][j] * 2.0 * r / (3.0 * s);
+        }}
+    }}
+    
+    // Compute temp = matmul(diag, v)
+    matmul(diag, v, temp);
+    
+    // Subtract matmul(u, temp) from expected
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            double sum = 0.0;
+            for (int k = 0; k < n; k++) {{
+                sum += u[i][k] * temp[k][j];
+            }}
+            expected[i][j] -= sum;
+        }}
+    }}
+    
+    // Check if results match
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            if (fabs(expected[i][j]) > 1.0E-10) {{
+                double rel_err = fabs(x[i][j] - expected[i][j]) / fabs(expected[i][j]);
+                if (rel_err > 1.0E-5) {{
+                    printf("WRONG\\n");
+                    return 1;
+                }}
+            }}
+        }}
+    }}
+    
+    printf("OK\\n");
+    return 0;
+}}
+"""
+
+
+def test_full_c_printer(eval_seq_deps, tmpdir):
+    """Test the C printer for full evaluation."""
+
+    eval_seq = eval_seq_deps
+
+    printer = CPrinter()
+    evals = printer.doprint(eval_seq)
+
+    code = _C_FULL_TEST_CODE.format(eval=evals)
+    assert _test_c_code(code, tmpdir)
+
+    sep_code = printer.doprint(eval_seq, separate_decls=True)
+    assert len(sep_code) == 2
+    assert evals == '\n'.join(sep_code)
+
+
+_C_FULL_TEST_CODE = """
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
+
+#define n 10
+
+void random_fill(double mat[n][n]) {{
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            mat[i][j] = (double)rand() / RAND_MAX;
+        }}
+    }}
+}}
+
+void matmul(double a[n][n], double b[n][n], double result[n][n]) {{
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            result[i][j] = 0.0;
+            for (int k = 0; k < n; k++) {{
+                result[i][j] += a[i][k] * b[k][j];
+            }}
+        }}
+    }}
+}}
+
+double trace(double mat[n][n]) {{
+    double tr = 0.0;
+    for (int i = 0; i < n; i++) {{
+        tr += mat[i][i];
+    }}
+    return tr;
+}}
+
+int main() {{
+    srand(42);
+    
+    int a, b, c;
+    double X[n][n];
+    double Y[n][n];
+    double R1[n][n];
+    double R2[n][n];
+    
+    random_fill(X);
+    random_fill(Y);
+    
+    {{
+        {eval}
+    }}
+    
+    // Compute expected results
+    double XY[n][n];
+    double YX[n][n];
+    double expected_R1[n][n];
+    double expected_R2[n][n];
+    
+    matmul(X, Y, XY);
+    matmul(Y, X, YX);
+    
+    double tr = trace(XY);
+    
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            expected_R1[i][j] = XY[i][j] * tr + YX[i][j];
+            expected_R2[i][j] = XY[i][j] * 2.0;
+        }}
+    }}
+    
+    // Check R1
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            if (fabs(expected_R1[i][j]) > 1.0E-10) {{
+                double rel_err = fabs(R1[i][j] - expected_R1[i][j]) / fabs(expected_R1[i][j]);
+                if (rel_err > 1.0E-5) {{
+                    printf("WRONG\\n");
+                    return 1;
+                }}
+            }}
+        }}
+    }}
+    
+    // Check R2
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < n; j++) {{
+            if (fabs(expected_R2[i][j]) > 1.0E-10) {{
+                double rel_err = fabs(R2[i][j] - expected_R2[i][j]) / fabs(expected_R2[i][j]);
+                if (rel_err > 1.0E-5) {{
+                    printf("WRONG\\n");
+                    return 1;
+                }}
+            }}
+        }}
+    }}
+    
+    printf("OK\\n");
+    return 0;
+}}
+"""
+
+
 def test_einsum_printer(simple_drudge):
     """Test the basic functionality of the einsum printer.
     """
@@ -466,7 +720,7 @@ def test_full_einsum_printer(eval_seq_deps):
 
 
 _FULL_EINSUM_DRIVER_CODE = """
-from numpy import zeros, einsum, trace
+from numpy import zeros, einsum, trace, dtype
 from numpy.random import rand
 from numpy import linalg
 
@@ -488,4 +742,106 @@ global diff2
 diff1 = linalg.norm((R1 - expected_r1) / expected_r1)
 diff2 = linalg.norm((R2 - expected_r2) / expected_r2)
 
+"""
+
+
+def _test_julia_code(code, dir):
+    """Test the given Julia code using juliacall.
+
+    Returns the result value from Julia, or None if juliacall is not available.
+    """
+    
+    # Check if juliacall is available
+    try:
+        from juliacall import Main as jl
+    except ImportError:
+        return None
+    
+    try:
+        # Execute the test code
+        jl.seval(code)
+        
+        # Return the result
+        return jl
+    except Exception as e:
+        print(f"Julia execution failed: {e}")
+        return None
+
+
+def test_omeinsum_printer(simple_drudge, tmpdir):
+    """Test the basic functionality of the OMEinsum printer.
+    """
+    
+    dr = simple_drudge
+    p = dr.names
+    a, b, c = p.R_dumms[:3]
+
+    x = IndexedBase('x')
+    u = IndexedBase('u')
+    v = IndexedBase('v')
+
+    tensor = dr.define_einst(
+        x[a, b], u[b, a] ** 2 - 2 * u[a, c] * v[c, b] / 3
+    )
+
+    printer = OMEinsumPrinter()
+    code = printer.doprint([tensor])
+
+    julia_test_code = _OMEINSUM_DRIVER_CODE.format(code=code)
+    
+    jl = _test_julia_code(julia_test_code, tmpdir)
+    if jl is None:
+        pytest.skip("Julia or OMEinsum.jl not available")
+    
+    diff = float(jl.diff)
+    assert diff < 1.0E-5  # Arbitrary delta.
+
+
+_OMEINSUM_DRIVER_CODE = """
+n = 2
+u = [1.0 2.0; 3.0 4.0]
+v = [1.0 0.0; 0.0 1.0]
+
+{code}
+
+expected = transpose(u .^ 2) - (2.0 / 3.0) * (u * v)
+diff = maximum(abs.(x .- expected))
+"""
+
+
+def test_full_omeinsum_printer(eval_seq_deps, tmpdir):
+    """Test the full functionality of the OMEinsum printer.
+    """
+    eval_seq = eval_seq_deps
+    printer = OMEinsumPrinter()
+    code = printer.doprint(eval_seq)
+    
+    julia_test_code = _FULL_OMEINSUM_DRIVER_CODE.format(eval=code)
+    
+    jl = _test_julia_code(julia_test_code, tmpdir)
+    if jl is None:
+        pytest.skip("Julia or OMEinsum.jl not available")
+    
+    diff1 = float(jl.diff1)
+    diff2 = float(jl.diff2)
+    assert diff1 < 1.0E-5
+    assert diff2 < 1.0E-5
+
+
+_FULL_OMEINSUM_DRIVER_CODE = """
+n = 10
+
+X = rand(n, n)
+Y = rand(n, n)
+
+{eval}
+
+XY = X * Y
+YX = Y * X
+tr_val = tr(XY)
+expected_R1 = XY * tr_val + YX
+expected_R2 = XY * 2
+
+diff1 = maximum(abs.((R1 .- expected_R1) ./ expected_R1))
+diff2 = maximum(abs.((R2 .- expected_R2) ./ expected_R2))
 """

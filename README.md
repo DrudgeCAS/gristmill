@@ -73,10 +73,11 @@ symmetrization, which ensures intermediates that are equivalent by symmetry are
 computed only once using the canonicalization capability in
 [drudge](https://github.com/DrudgeCAS/drudge).
 
-The code generator in Gristmill is a component orthogonal to the optimizer.
+The code generator in Gristmill is an orthogonal component to the optimizer.
 Both optimized and unoptimized computations can be fed into the code generator
-to yield naive Fortran or C code (with optional OpenMP parallelization) or
-Python code using NumPy.
+to yield naive Fortran and C code (with optional OpenMP parallelization) as well
+as Python code using NumPy and Julia code using
+[OMEinsum.jl](https://github.com/under-Peter/OMEinsum.jl).
 
 
 ## Installation

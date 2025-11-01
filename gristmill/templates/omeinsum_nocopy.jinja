@@ -1,0 +1,4 @@
+{{ base }} {% if n_exts != 0 %}{{ '.' }}{% endif %}
+{{ term.phase }}= {% if term.numerator != '1' %}
+{{ term.numerator }} {% if n_exts != 0 %}{{ '.' }}{% endif %}* {% endif %}{{ term.indexed_factors[0].base }}{% if term.denominator != '1' -%} {% if n_exts != 0 %}{{ '.' }}{% endif %}{{ '/' }} {{ term.denominator }}
+{% endif %}

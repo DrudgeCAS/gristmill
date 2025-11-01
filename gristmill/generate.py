@@ -9,12 +9,14 @@ import typing
 
 from drudge.term import try_resolve_range
 from sympy import (
-    Expr, Mul, Pow, Integer, Rational, Add, Indexed, IndexedBase, Symbol
+    Expr, Add, Mul, Pow, Integer, Rational, Float, Indexed, IndexedBase,
+    Symbol
 )
+from sympy.printing.printer import Printer
 from sympy.printing.c import C89CodePrinter
 from sympy.printing.fortran import FCodePrinter
-from sympy.printing.printer import Printer
-from sympy.printing.python import PythonPrinter
+from sympy.printing.pycode import PythonCodePrinter
+from sympy.printing.julia import JuliaCodePrinter
 
 from drudge import TensorDef, Term, Range, prod_
 from .utils import JinjaEnv
@@ -341,19 +343,26 @@ class BasePrinter(abc.ABC):
                     if factor != 1:
                         numerator.append(factor)
                 elif isinstance(factor, Rational):
-                    for i, j in [
-                        (factor.p, numerator), (factor.q, denominator)
-                    ]:
-                        if i < 0:
-                            phase *= -1
-                            i = -i
-                        if i != 1:
-                            j.append(i)
+                    if factor.p < 0:
+                        phase *= -1
+                        factor = -factor
+                    numerator.insert(0, factor.evalf())
                 elif isinstance(factor, Pow) and factor.args[1].is_negative:
                     denominator.append(1 / factor)
                 else:
                     numerator.append(factor)
                 continue
+
+            if (
+                len(denominator) == 0 and (
+                    len(numerator) == 1
+                    and isinstance(numerator[0], (Integer, Float, Symbol))
+                    or len(numerator) == 0
+                )
+            ):
+                term_ctx.single_factor = True
+            else:
+                term_ctx.single_factor = False
 
             term_ctx.phase = '+' if phase == 1 else '-'
             for i, j, k in [
@@ -1150,7 +1159,7 @@ class CPrinter(NaiveCodePrinter):
     def form_loop_open(self, ctx):
         """Form the loop opening for C.
         """
-        return 'for({index}={lower}; {index}<{upper}, {index}++)'.format(
+        return 'for({index}={lower}; {index}<{upper}; {index}++)'.format(
             index=ctx.index, lower=ctx.lower, upper=ctx.upper
         ) + ' {'
 
@@ -1170,7 +1179,7 @@ class CPrinter(NaiveCodePrinter):
         """
         ctx = event.comput.ctx
 
-        return '{} {}{}'.format('double', ctx.base, ''.join(
+        return '{} {}{};'.format('double', ctx.base, ''.join(
             '[{}]'.format(i.size) for i in ctx.indices
         ))
 
@@ -1458,9 +1467,8 @@ class EinsumPrinter(BasePrinter):
     zeros
         The name of the constructor for an array of zeroes.
 
-    dtype
-        The data type for the construction of tensors.  A value of None will
-        give no ``dtype`` argument.
+    default_type
+        The default data type for the construction of tensors.
 
     einsum
         The name of the einsum function.
@@ -1468,7 +1476,7 @@ class EinsumPrinter(BasePrinter):
     """
 
     def __init__(
-            self, zeros='zeros', dtype=None, einsum='einsum', extr_unary=True,
+            self, zeros='zeros', default_type='float64', einsum='einsum', extr_unary=True,
             add_globals=None, **kwargs
     ):
         """Initialize the printer.
@@ -1481,12 +1489,12 @@ class EinsumPrinter(BasePrinter):
             globals_.update(add_globals)
 
         super().__init__(
-            PythonPrinter(), extr_unary=extr_unary, add_globals=globals_,
+            PythonCodePrinter(), extr_unary=extr_unary, add_globals=globals_,
             **kwargs
         )
 
         self._zeros = zeros
-        self._dtype = dtype
+        self._default_type = default_type
         self._einsum = einsum
 
     def print_decl(self, event: TensorDecl):
@@ -1495,9 +1503,10 @@ class EinsumPrinter(BasePrinter):
         return None
 
     def print_begin_body(self, event: BeginBody):
-        """Do nothing.
+        """Import packages.
         """
-        return None
+        preamble = "from numpy import zeros, dtype"
+        return preamble
 
     def print_before_comp(self, event: BeforeComp):
         """Initialize the tensor to zero.
@@ -1508,16 +1517,19 @@ class EinsumPrinter(BasePrinter):
             shape = '({})'.format(', '.join(
                 i.size for i in ctx.indices
             ))
-            if self._dtype is None:
+            if self._default_type is None:
                 args = shape
             else:
-                args = '{}, dtype={}'.format(shape, self._dtype)
+                args = "{}, dtype='{}'".format(shape, self._default_type)
 
-            lhs = '{}({})'.format(self._zeros, args)
+            rhs = '{}({})'.format(self._zeros, args)
         else:
-            lhs = '0'
+            if self._default_type is None:
+                rhs = '0.0'
+            else:
+                rhs = "dtype('{}').type(0)".format(self._default_type)
 
-        return '{} = {}'.format(ctx.base, lhs)
+        return '{} = {}'.format(ctx.base, rhs)
 
     def print_comp_term(self, event: CompTerm):
         """Print the evaluation of a term to be added to the target.
@@ -1525,7 +1537,7 @@ class EinsumPrinter(BasePrinter):
 
         ctx = event.comput.ctx
         ctx.term = event.term_ctx
-        code = self.render('einsum', ctx)
+        code = self.render('einsum.jinja', ctx)
         del ctx.term
 
         return code
@@ -1534,6 +1546,110 @@ class EinsumPrinter(BasePrinter):
         """Remove an used intermediate tensor.
         """
         return 'del {}'.format(event.comput.ctx.base)
+
+    def print_end_body(self, event: EndBody):
+        """Do nothing.
+        """
+        return None
+
+
+#
+# OMEinsum printer
+# --------------
+#
+
+
+class OMEinsumPrinter(BasePrinter):
+    """Printer for Julia using the `OMEinsum.jl` package
+
+    For tensors that are classical tensor contractions, this printer generates
+    Julia code using the ``@ein_str`` macro in `OMEinsum.jl`.
+
+    Parameters
+    ----------
+
+    default_type
+        The default data type for tensor declarations.
+
+    """
+
+    def __init__(
+            self, default_type='Float64', extr_unary=True,
+            add_globals=None, **kwargs
+    ):
+        """Initialize the printer.
+        """
+
+        globals_ = {
+            'ein': 'ein'
+        }
+        if add_globals is not None:
+            globals_.update(add_globals)
+
+        super().__init__(
+            JuliaCodePrinter(), extr_unary=extr_unary, add_globals=globals_,
+            **kwargs
+        )
+
+        self._zeros = 'zeros'
+        self._default_type = default_type
+        self._ein_str = 'ein'
+
+    def print_decl(self, event: TensorDecl):
+        """Do nothing.
+        """
+        return None
+
+    def print_begin_body(self, event: BeginBody):
+        """Import packages.
+        """
+        preamble = "using LinearAlgebra, OMEinsum" 
+        return preamble
+
+    def print_before_comp(self, event: BeforeComp):
+        """Initialize the tensor to zero.
+        """
+        ctx = event.comput.ctx
+
+        if len(ctx.indices) > 0:
+            shape = '{}'.format(', '.join(
+                i.size for i in ctx.indices
+            ))
+            if self._default_type is None:
+                args = shape
+            else:
+                args = '{}, {}'.format(self._default_type, shape)
+
+            rhs = '{}({})'.format(self._zeros, args)
+        else:
+            if self._default_type is None:
+                rhs = '0.0'
+            else:
+                rhs = 'zero({})'.format(self._default_type)
+
+        return '{} = {}'.format(ctx.base, rhs)
+
+    def print_comp_term(self, event: CompTerm):
+        """Print the evaluation of a term to be added to the target.
+        """
+
+        ctx = event.comput.ctx
+        ctx.term = event.term_ctx
+        if (
+            len(ctx.term.indexed_factors) == 1
+            and ctx.term.indexed_factors[0].indices == ctx.indices
+        ):
+            code = self.render('omeinsum_nocopy.jinja', ctx)
+        else:
+            code = self.render('ein_str.jinja', ctx)
+        del ctx.term
+
+        return code
+
+    def print_out_of_use(self, event: OutOfUse):
+        """Remove an used intermediate tensor.
+        """
+        return '{} = nothing'.format(event.comput.ctx.base)
 
     def print_end_body(self, event: EndBody):
         """Do nothing.

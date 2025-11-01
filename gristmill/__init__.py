@@ -5,7 +5,7 @@ Public names are going to be imported here.
 
 from .generate import (
     BasePrinter, NaiveCodePrinter, CPrinter, FortranPrinter,
-    EinsumPrinter, mangle_base
+    EinsumPrinter, OMEinsumPrinter, mangle_base
 )
 from .optimize import optimize, verify_eval_seq, ContrStrat, RepeatedTermsStrat
 from .utils import get_flop_cost
@@ -23,5 +23,6 @@ __all__ = [
     'NaiveCodePrinter',
     'CPrinter',
     'FortranPrinter',
-    'EinsumPrinter'
+    'EinsumPrinter',
+    'OMEinsumPrinter'
 ]
