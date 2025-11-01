@@ -22,9 +22,10 @@ updates:
       prefix-development: "deps-dev"
       include: "scope"
     # Reviewers will be assigned automatically by repository settings
-    labels:
-      - "dependencies"
-      - "python"
+    # Labels removed - create them in GitHub repository settings if needed:
+    # labels:
+    #   - "dependencies"
+    #   - "python"
     open-pull-requests-limit: 5
     # Allow both direct and indirect dependency updates
     allow:
@@ -43,9 +44,10 @@ updates:
       prefix: "ci"
       include: "scope"
     # Reviewers will be assigned automatically by repository settings
-    labels:
-      - "dependencies"
-      - "github-actions"
+    # Labels removed - create them in GitHub repository settings if needed:
+    # labels:
+    #   - "dependencies"
+    #   - "github-actions"
     open-pull-requests-limit: 3
 
   # Update Git submodules monthly
@@ -60,7 +62,8 @@ updates:
       prefix: "deps"
       include: "scope"
     # Reviewers will be assigned automatically by repository settings
-    labels:
-      - "dependencies"
-      - "submodule"
+    # Labels removed - create them in GitHub repository settings if needed:
+    # labels:
+    #   - "dependencies"
+    #   - "submodule"
     open-pull-requests-limit: 2
