@@ -241,7 +241,7 @@ static PyObject* parenth_func(PyObject* self, PyObject* args)
         for (auto& factor : factors_inp) {
             factors.emplace_back();
             for (auto& i : factor) {
-                factors.back().push_back(i.as<long>());
+                factors.back().push_back(i.as<size_t>());
             }
         }
 
