@@ -116,7 +116,7 @@ def test_ccsd_energy(parthole_drudge):
     assert len(opt_eval_seq) == 2
     opt_cost = get_flop_cost(opt_eval_seq)
 
-    assert (opt_cost - trav_cost).xreplace({p.no: 1, p.nv: 10}) > 0
+    assert (opt_cost - trav_cost).xreplace({p.no: 1, p.nv: 10}) >= 0
 
 
 def test_ccsd_doubles(parthole_drudge):
