@@ -6,14 +6,14 @@ Gristmill is a tensor contraction optimizer and code generator built on top of t
 
 **Project Type**: Python package with C++ extensions  
 **Size**: ~7k lines of Python code in main package  
-**Languages**: Python 3.12+, C++17  
+**Languages**: Python 3.12+, C++20
 **Main Components**:
 - `gristmill/optimize.py` - Core optimization algorithms  
 - `gristmill/generate.py` - Code generation and printers  
 - `gristmill/utils.py` - Utility functions including FLOP counting  
 
 **Key Dependencies**: drudge, sympy, numpy, networkx, jinja2  
-**Build Dependencies**: C++ compiler with C++17 support, Python setuptools
+**Build Dependencies**: C++ compiler with C++20 support, Python setuptools
 
 ## Critical Setup Instructions
 
@@ -132,7 +132,7 @@ tests/
 
 ### C++ Compilation Errors
 **Problem**: Extension build fails  
-**Solution**: Ensure C++ compiler supports C++17 and submodules are initialized.
+**Solution**: Ensure C++ compiler supports C++20 and submodules are initialized.
 
 ## Key Facts for Code Changes
 

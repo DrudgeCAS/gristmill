@@ -14,10 +14,10 @@ INCLUDE_DIRS = [
 # Platform-specific compiler flags
 if sys.platform == "win32":
     # MSVC compiler flags
-    COMPILE_FLAGS = ['/std:c++17']
+    COMPILE_FLAGS = ['/std:c++20']
 else:
     # GCC/Clang compiler flags  
-    COMPILE_FLAGS = ['-std=c++17']
+    COMPILE_FLAGS = ['-std=c++20']
     
     # Additional flags for macOS to avoid header conflicts
     if sys.platform == "darwin":
