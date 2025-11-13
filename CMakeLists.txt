@@ -17,7 +17,7 @@ set(LIBPARENTH_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/libparenth/include"
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   message(STATUS "Configuring for macOS (Darwin)")
   set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9")
-  add_compiler_options(-stdlib=libc++)
+  add_compile_options(-stdlib=libc++)
 # elseif(MSVC)
 #   # MSVC compiler flags
 #   add_compile_options(/EHsc /bigobj /wd4996 /wd4267 /Zc:twoPhase-)
