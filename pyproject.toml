@@ -7,7 +7,7 @@ cmake.minimum-version = "3.15"  # Minimum version of CMake
 cmake.verbose = true  # Verbose build for debugging
 # Don't create a separate subdirectory - install alongside Python source files
 wheel.packages = ["gristmill"]
-sdist.include = ["gristmill/templates/*", "deps/cpypp/include/*.hpp", "deps/fbind/include/*.hpp", "deps/libparenth/include/*.hpp"]
+sdist.include = ["gristmill/templates/*", "deps/cpypp/include/**/*.hpp", "deps/fbitset/include/**/*.hpp", "deps/libparenth/include/**/*.hpp"]
 
 [project]
 name = "gristmill"
