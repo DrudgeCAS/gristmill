@@ -205,10 +205,11 @@ wheels = [
 
 [[package]]
 name = "drudge"
-version = "0.11.0"
-source = { git = "https://github.com/DrudgeCAS/drudge.git?rev=master#d6e34abb8bb6ef558fd9fd5dbc57c035fa4d17bd" }
+version = "0.11.2"
+source = { git = "https://github.com/DrudgeCAS/drudge.git?rev=master#de93861f007b4381f083057602b78596a54fede1" }
 dependencies = [
     { name = "dummyrdd" },
+    { name = "ipykernel" },
     { name = "ipython" },
     { name = "jinja2" },
     { name = "pyspark" },
