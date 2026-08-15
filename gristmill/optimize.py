@@ -2788,7 +2788,17 @@ class _Optimizer:
             interms[factor_idxes] = interm
             return interm
 
-        for k, v in res.items():
+        # The memoir arrives as a dictionary built from a C++ unordered map,
+        # whose iteration order is implementation defined.  libstdc++ and
+        # libc++ disagree, and the order the intermediates are formed in
+        # decides which of them get matched against each other, so the
+        # optimization used to give different answers on Linux and on macOS.
+        # Sorting removes that.
+        #
+        # Which order is a real choice, not a formality: the ascending one
+        # loses the effective T of the CCSD energy equation.  That the answer
+        # depends on it at all is a weakness of the greedy constriction.
+        for k, v in sorted(res.items(), reverse=True):
             assert len(k) > 0
             target: _Interm = form_interm(k)
             target_node = target.node

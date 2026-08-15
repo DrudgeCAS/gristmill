@@ -9,7 +9,7 @@ tested here.
 
 import pytest
 from drudge import Range, Drudge
-from sympy import symbols, IndexedBase
+from sympy import symbols, Symbol, IndexedBase
 
 from gristmill import optimize, verify_eval_seq, get_flop_cost
 
@@ -332,7 +332,6 @@ def test_general_matrix_problem(three_ranges):
 #
 
 
-@pytest.mark.xfail(reason='Flaky until the following test is fixed')
 def test_disconnected_outer_product_factorization(three_ranges):
     """Test optimization of expressions with disconnected outer products.
     """
@@ -371,12 +370,11 @@ def test_disconnected_outer_product_factorization(three_ranges):
     assert leading_cost == 4 * m ** 2
 
 
-@pytest.mark.xfail(reason='TODO: Needs investigation')
 def test_factorization_needing_canonicalization(three_ranges):
     """Test a simple factorization needing canonicalization.
 
-    The inability of gristmill to fully optimize this test is the ultimate
-    reason why the above test is flaky.
+    The two terms share Z, but with its indices transposed, so the common
+    factor is only visible after canonicalization.
     """
 
     dr = three_ranges
