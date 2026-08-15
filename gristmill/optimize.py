@@ -753,15 +753,16 @@ def _biclique_tie_key(biclique: '_Biclique'):
     remaining ties the same way every time.
     """
 
-    infos = dict(biclique.constr_graph.graph.nodes(data='info'))
+    nodes = biclique.constr_graph.graph.nodes
 
     def side(part):
         return tuple(sorted(
-            (str(infos[vert].canon), str(coeff)) for vert, coeff in part
+            (str(nodes[vert]['info'].canon), str(coeff))
+            for vert, coeff in part
         ))
 
     return (
-        -bin(biclique.terms).count('1'),
+        -biclique.terms.bit_count(),
         sorted([side(biclique.parts[0]), side(biclique.parts[1])]),
     )
 
@@ -917,19 +918,23 @@ class _BronKerbosch:
 
         return
 
-    def _canon_order(self, verts):
-        """Put designated vertices in an order fixed by their content.
+    def _vert_content(self, vert: int) -> str:
+        """The canonical form of a vertex, as something orderable.
 
-        The vertex numbers come from the order edges happened to arrive, so
-        looping over them directly makes the search, and with it the result,
-        depend on that order.  The canonical form of a vertex is content, so
-        ordering by it gives the same search whatever the numbering.
+        Vertex numbers come from the order edges happened to arrive.  Anything
+        in the search that consults them makes the result depend on that order.
+        The canonical form is content, so it does not move when the numbering
+        does.
         """
 
-        infos = self._constr_graph.graph.nodes
+        return str(self._constr_graph.graph.nodes[vert]['info'].canon)
+
+    def _canon_order(self, verts):
+        """Put designated vertices in an order fixed by their content."""
+
         return sorted(
             verts,
-            key=lambda v: (v.part, str(infos[v.vert]['info'].canon), v.vert)
+            key=lambda v: (v.part, self._vert_content(v.vert), v.vert)
         )
 
     def _expand(
@@ -976,7 +981,8 @@ class _BronKerbosch:
         if_oriented = True
         if exts[0] == exts[1] and all(i > 0 for i in n_verts):
             if_oriented = (
-                min(i[0] for i in curr[0]) < min(i[0] for i in curr[1])
+                min(self._vert_content(i[0]) for i in curr[0])
+                < min(self._vert_content(i[0]) for i in curr[1])
             )
 
         if if_maximal and if_profitable and if_oriented:
@@ -1057,13 +1063,12 @@ class _BronKerbosch:
             for k in pivots
         ]
         # Ties on the pivot are settled by content as well, for the same
-        # reason: `subg` is in the order its vertices were created.
-        fqs = [(self._canon_order([k])[0], v) for k, v in fqs]
+        # reason: `subg` is in the order its vertices were created.  Ordering
+        # the candidates by content first is enough, since `max` keeps the
+        # first of any equals.
+        fqs.sort(key=lambda x: (x[0].part, self._vert_content(x[0].vert)))
         try:
-            _, excl = max(
-                fqs, key=lambda x: (len(x[1] & to_loop),
-                                    tuple(-ord(c) for c in str(x[0])))
-            )
+            _, excl = max(fqs, key=lambda x: len(x[1] & to_loop))
         except ValueError:
             pass
         else:
