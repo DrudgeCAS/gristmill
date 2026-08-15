@@ -57,6 +57,64 @@ def test_summation_shared_by_four_factors(simple_drudge):
     assert all(i == costs[0] for i in costs)
 
 
+def test_constriction_over_an_outer_product(simple_drudge):
+    """Test factoring a common tensor out over an outer product.
+
+    Both terms share A, so the good evaluation forms X + y z once and contracts
+    it with A, costing 4 n^2.  Taking the locally optimal contraction of the
+    second term instead gives 4 n^2 + 2 n + 1.
+
+    The optimizer used to return either, depending on the order the vertices of
+    the constriction graph happened to be numbered in, which followed the order
+    a C++ unordered map was iterated.  See issue #43.
+    """
+
+    dr = simple_drudge
+    n = dr.n
+    a, b = dr.ds[:2]
+
+    A, X = IndexedBase('A'), IndexedBase('X')
+    y, z = IndexedBase('y'), IndexedBase('z')
+
+    targets = [dr.define_einst(
+        Symbol('e'), A[a, b] * X[a, b] + A[a, b] * y[a] * z[b])]
+
+    eval_seq = optimize(targets)
+
+    assert verify_eval_seq(eval_seq, targets)
+    assert get_flop_cost(eval_seq) == 4 * n ** 2
+
+
+def test_constriction_over_three_terms(simple_drudge):
+    """Test a constriction that has to take all three terms at once.
+
+    Every term has both X and y, so the good evaluation forms the vector
+    z - u + 2 y, contracts X with y once, and puts the two together, costing
+    2 n^2 + 4 n.  Stopping after a constriction over only two of the terms
+    leaves a second matrix-vector product and costs 4 n^2 + 4 n.
+
+    Both were reachable before, decided by vertex numbering.  See issue #43.
+    """
+
+    dr = simple_drudge
+    n = dr.n
+    a, b = dr.ds[:2]
+
+    X = IndexedBase('X')
+    y, z, u = (IndexedBase(i) for i in ['y', 'z', 'u'])
+
+    targets = [dr.define_einst(
+        Symbol('e'),
+        X[a, b] * z[a] * y[b]
+        + 2 * X[a, b] * y[a] * y[b]
+        - X[a, b] * u[a] * y[b])]
+
+    eval_seq = optimize(targets)
+
+    assert verify_eval_seq(eval_seq, targets)
+    assert get_flop_cost(eval_seq) == 2 * n ** 2 + 4 * n
+
+
 def test_simple_scalar_optimization(spark_ctx):
     """Test optimization of a simple scalar.
 

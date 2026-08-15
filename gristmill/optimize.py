@@ -737,6 +737,35 @@ class _Biclique(typing.NamedTuple):
     constr_graph: '_ConstrGraph'
 
 
+def _biclique_tie_key(biclique: '_Biclique'):
+    """Order two equally profitable bicliques.
+
+    Equal saving happens often, and the greedy loop then has a real choice to
+    make: the two are not interchangeable, since what is left behind for the
+    next round differs.  Deciding it by whichever was reached first makes the
+    whole optimization depend on the order the vertices were numbered in.
+
+    The key here is built from the canonical form of the vertices and from how
+    many terms the biclique covers, neither of which knows anything about
+    vertex numbering.  Covering more terms comes first, since that is the one
+    part of this with an argument behind it: a constriction over more terms
+    removes more of the sum in one step.  The rest is only there to settle the
+    remaining ties the same way every time.
+    """
+
+    infos = dict(biclique.constr_graph.graph.nodes(data='info'))
+
+    def side(part):
+        return tuple(sorted(
+            (str(infos[vert].canon), str(coeff)) for vert, coeff in part
+        ))
+
+    return (
+        -bin(biclique.terms).count('1'),
+        sorted([side(biclique.parts[0]), side(biclique.parts[1])]),
+    )
+
+
 #
 # Cost-related utilities for the Kron-Kerbosch process.
 #
@@ -888,6 +917,21 @@ class _BronKerbosch:
 
         return
 
+    def _canon_order(self, verts):
+        """Put designated vertices in an order fixed by their content.
+
+        The vertex numbers come from the order edges happened to arrive, so
+        looping over them directly makes the search, and with it the result,
+        depend on that order.  The canonical form of a vertex is content, so
+        ordering by it gives the same search whatever the numbering.
+        """
+
+        infos = self._constr_graph.graph.nodes
+        return sorted(
+            verts,
+            key=lambda v: (v.part, str(infos[v.vert]['info'].canon), v.vert)
+        )
+
     def _expand(
             self, subg: _DesVertsWDelta, cand: _DesVerts,
     ):
@@ -923,7 +967,19 @@ class _BronKerbosch:
             i > 0 for i in n_verts
         ) and any(i > 1 for i in n_verts) and curr_saving >= 0
 
-        if if_maximal and if_profitable:
+        # The two parts of a biclique are interchangeable, so each one would
+        # otherwise be generated twice.  Keep only the orientation where the
+        # lowest numbered vertex sits in the first part.  This is decided on
+        # the finished biclique rather than on the pair it was started from,
+        # so that no branch is cut off from a biclique it is responsible for
+        # under the CAND bookkeeping.
+        if_oriented = True
+        if exts[0] == exts[1] and all(i > 0 for i in n_verts):
+            if_oriented = (
+                min(i[0] for i in curr[0]) < min(i[0] for i in curr[1])
+            )
+
+        if if_maximal and if_profitable and if_oriented:
             # If maximal and profitable.
             #
             # if not subg_q:
@@ -965,10 +1021,10 @@ class _BronKerbosch:
             to_loop = {i for i in cand if i.part == 0}
         elif n_verts[1] == 0:
             to_loop = {i for i in cand if i.part == 1}
-            if exts[0] == exts[1]:
-                # First part, first vertex, the vertex
-                exist_vert: int = curr[0][0][0]
-                to_loop = {i for i in to_loop if i.vert > exist_vert}
+            # The orientation used to be forced here, by demanding this vertex
+            # exceed the first part's vertex.  That cut branches which the CAND
+            # bookkeeping had already made responsible for some bicliques, so
+            # those went missing.  It is now decided at the yield instead.
             if self._req_an_opt:
                 to_loop = {i for i in to_loop if subg[i].exc_cost == 0}
             else:
@@ -996,12 +1052,18 @@ class _BronKerbosch:
                     pivots = []
 
         # Designated vertices that can be excluded for each pivot.
-        fqs = (
-            {i for i in subgq[k].keys() if i.part == k.part}
+        fqs = [
+            (k, {i for i in subgq[k].keys() if i.part == k.part})
             for k in pivots
-        )
+        ]
+        # Ties on the pivot are settled by content as well, for the same
+        # reason: `subg` is in the order its vertices were created.
+        fqs = [(self._canon_order([k])[0], v) for k, v in fqs]
         try:
-            excl = max(fqs, key=lambda x: len(x & to_loop))
+            _, excl = max(
+                fqs, key=lambda x: (len(x[1] & to_loop),
+                                    tuple(-ord(c) for c in str(x[0])))
+            )
         except ValueError:
             pass
         else:
@@ -1011,7 +1073,7 @@ class _BronKerbosch:
             to_loop = list(to_loop)
             random.shuffle(to_loop)
 
-        for q_v in to_loop:
+        for q_v in self._canon_order(to_loop):
             q_d = subg[q_v]
             part, vert = q_v.part, q_v.vert
 
@@ -1254,13 +1316,26 @@ class _ConstrGraph:
 
         opt_saving = None
         opt_biclique = None
+        opt_key = None
 
         for biclique in _BronKerbosch(last_step_idxes, self):
 
             saving = biclique.saving
 
             if opt_saving is None or saving > opt_saving:
+                better = True
+            elif saving == opt_saving:
+                # Equally profitable.  Left to itself the first one reached
+                # wins, which makes the result depend on the order the
+                # vertices happened to be numbered in.  Break the tie on the
+                # content instead.
+                better = _biclique_tie_key(biclique) < opt_key
+            else:
+                better = False
+
+            if better:
                 opt_saving = saving
+                opt_key = _biclique_tie_key(biclique)
                 # Make copy only when we need them.
                 parts = biclique.parts
                 assert len(parts) == 2
@@ -1364,6 +1439,7 @@ class _ConstrGraphs(typing.Dict[_LastStepIdxes, _ConstrGraph]):
         opt_saving = None
         opt_last_step_idxes = None
         opt_biclique = None
+        opt_key = None
         for last_step_idxes, constr_graph in self.items():
 
             curr_opt_saving, curr_opt_biclique = constr_graph.get_opt_biclique(
@@ -1373,8 +1449,19 @@ class _ConstrGraphs(typing.Dict[_LastStepIdxes, _ConstrGraph]):
             if curr_opt_saving is None:
                 continue
 
+            # Same tie as inside a single graph, one level up: the graphs are
+            # walked in the order they were created, so without a tie-break
+            # the winner among equally profitable ones depends on that order.
             if opt_saving is None or curr_opt_saving > opt_saving:
+                better = True
+            elif curr_opt_saving == opt_saving:
+                better = _biclique_tie_key(curr_opt_biclique) < opt_key
+            else:
+                better = False
+
+            if better:
                 opt_saving = curr_opt_saving
+                opt_key = _biclique_tie_key(curr_opt_biclique)
                 opt_last_step_idxes = last_step_idxes
                 opt_biclique = curr_opt_biclique
 
