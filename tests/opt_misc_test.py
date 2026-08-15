@@ -115,6 +115,38 @@ def test_constriction_over_three_terms(simple_drudge):
     assert get_flop_cost(eval_seq) == 2 * n ** 2 + 4 * n
 
 
+def test_constriction_search_is_not_pruned_unsoundly(simple_drudge):
+    """Test a constriction the pivot pruning used to throw away.
+
+    All three terms share P and all three involve u, so the good evaluation
+    contracts P once and costs 4 n^2 + 4 n.  Pruning the search by the pivot
+    rule loses that and leaves 5 n^2 + 3 n, which is worse by a whole power of
+    n rather than by a constant.
+
+    The pivot rule assumes taking a vertex into a biclique cannot lower its
+    saving, which is true for ordinary maximal cliques and false here.  See
+    issue #43.
+    """
+
+    dr = simple_drudge
+    n = dr.n
+    a, b = dr.ds[:2]
+
+    P = IndexedBase('P')
+    z, u, w = (IndexedBase(i) for i in ['z', 'u', 'w'])
+
+    targets = [dr.define_einst(
+        Symbol('res'),
+        -P[a, b] * z[a] * u[b]
+        + P[a, b] * u[a] * w[b]
+        + 3 * P[a, b] * w[a] * u[b])]
+
+    eval_seq = optimize(targets)
+
+    assert verify_eval_seq(eval_seq, targets)
+    assert get_flop_cost(eval_seq) == 4 * n ** 2 + 4 * n
+
+
 def test_simple_scalar_optimization(spark_ctx):
     """Test optimization of a simple scalar.
 

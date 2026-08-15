@@ -824,6 +824,11 @@ class _VertGross(typing.Dict[typing.Tuple[int, int], typing.Tuple[Size, Size]]):
         """Initialize the dictionary."""
         self._cost_coeffs = _get_cost_coeffs(last_step_idxes)
 
+    @property
+    def cost_coeffs(self) -> '_CostCoeffs':
+        """The cost coefficients behind the gross savings."""
+        return self._cost_coeffs
+
     def __missing__(self, key):
         """Compute the gross savings for new keys."""
         assert len(key) == 2
@@ -886,6 +891,11 @@ class _BronKerbosch:
         # The set of terms currently in the biclique.
         self._terms = 0
 
+        # The best saving yielded so far.  The caller only wants the most
+        # profitable biclique, so a branch that cannot beat this is not worth
+        # descending into.  Kept as None until something has been yielded.
+        self._best_saving = None
+
         # Gross saving of new vertices.
         self._vert_gross: _VertGross = _VertGross(last_step_idxes)
 
@@ -917,6 +927,48 @@ class _BronKerbosch:
         assert self._leading_coeff is None
 
         return
+
+    def _reach_bound(self, n_verts, cand) -> Size:
+        """The most the saving could still rise from here.
+
+        The saving of a biclique is its gross saving less the excess costs of
+        the edges it takes in.  Excess costs are never negative, since a
+        candidate form cannot be cheaper than the term's own optimum, so
+        ignoring the excess of edges not yet taken can only overestimate.  That
+        makes this an upper bound, and pruning on it cannot drop a biclique
+        that would have been profitable.
+
+        The gross saving at sizes (M, N) is
+
+            final * (M * N - 1) - preps[0] * (M - 1) - preps[1] * (N - 1)
+
+        which follows from the marginal saving `_VertGross` already computes.
+        Its increase on going to (M + i, N + j) is
+
+            final * (M * j + N * i + i * j) - preps[0] * i - preps[1] * j
+
+        That is bilinear in i and j, so over the rectangle of reachable sizes
+        it is largest at one of the four corners, and four evaluations settle
+        it however many candidates there are.
+        """
+
+        coeffs = self._vert_gross.cost_coeffs
+        final, preps = coeffs.final, coeffs.preps
+        curr_l, curr_r = n_verts
+
+        avail_l = sum(1 for i in cand if i.part == 0)
+        avail_r = sum(1 for i in cand if i.part == 1)
+
+        best = None
+        for i in (0, avail_l):
+            for j in (0, avail_r):
+                gain = (
+                    final * (curr_l * j + curr_r * i + i * j)
+                    - preps[0] * i - preps[1] * j
+                )
+                if best is None or gain > best:
+                    best = gain
+        return best
 
     def _vert_content(self, vert: int) -> str:
         """The canonical form of a vertex, as something orderable.
@@ -992,6 +1044,8 @@ class _BronKerbosch:
             #    yield Q[:]
             #
             self._yielded = True
+            if self._best_saving is None or curr_saving > self._best_saving:
+                self._best_saving = curr_saving
             yield _Biclique(
                 parts=curr, leading_coeff=self._leading_coeff,
                 terms=self._terms, saving=curr_saving,
@@ -999,6 +1053,20 @@ class _BronKerbosch:
             )
 
         if self._yielded and self._opt.rand_constr:
+            return
+
+        # Branch and bound.  If nothing reachable from here can beat what has
+        # already been found, and cannot be profitable either, there is no
+        # point descending.  Unlike pivoting this is sound: the bound is an
+        # overestimate, so a branch it drops held nothing worth having.
+        #
+        # The comparison is strict, so bicliques that merely tie with the best
+        # so far are still generated.  The caller breaks those ties on content,
+        # and it can only do that if it sees them.
+        reach = curr_saving + self._reach_bound(n_verts, cand)
+        if reach < 0:
+            return
+        if self._best_saving is not None and reach < self._best_saving:
             return
 
         # The quadratic loop.
@@ -1019,10 +1087,17 @@ class _BronKerbosch:
         #
 
         # to_loop need to be eagerly evaluated for avoiding complication with
-        # the mutation of cand during the loop and the set operations for
-        # pivoting.
+        # the mutation of cand during the loop.
+        #
+        # The pivot exclusion that used to follow this is gone.  It rests on an
+        # exchange argument: a maximal biclique avoiding every neighbour of the
+        # pivot could have taken the pivot in, so it was not maximal.
+        # Maximality here is having no augmentation that raises the saving, and
+        # taking a vertex in can lower the saving, so the argument does not
+        # hold, and profitable bicliques were being dropped.  The bound above
+        # prunes on something that is true instead, and on the shapes measured
+        # it prunes harder as well.
 
-        pivots: typing.Iterable[_DesVert] = []
         if n_verts[0] == 0:
             to_loop = {i for i in cand if i.part == 0}
         elif n_verts[1] == 0:
@@ -1033,18 +1108,10 @@ class _BronKerbosch:
             # those went missing.  It is now decided at the yield instead.
             if self._req_an_opt:
                 to_loop = {i for i in to_loop if subg[i].exc_cost == 0}
-            else:
-                gross = self._vert_gross[(1, 1)][1]
-                pivots = (
-                    k for k, v in subg.items()
-                    if k.part == 1 and gross - v.exc_cost >= 0
-                )
         else:
             to_loop = {i for i in cand if subg[i].saving >= 0}
             if len(to_loop) == 0:
                 return
-
-            pivots = (k for k, v in subg.items() if v.saving > 0)
 
             cut_greedy = 0 <= self._greedy_cutoff <= depth
             cut_full = 0 <= self._drop_cutoff <= depth
@@ -1055,24 +1122,6 @@ class _BronKerbosch:
                 }
                 if cut_full:
                     to_loop = {random.choice(list(to_loop))}
-                    pivots = []
-
-        # Designated vertices that can be excluded for each pivot.
-        fqs = [
-            (k, {i for i in subgq[k].keys() if i.part == k.part})
-            for k in pivots
-        ]
-        # Ties on the pivot are settled by content as well, for the same
-        # reason: `subg` is in the order its vertices were created.  Ordering
-        # the candidates by content first is enough, since `max` keeps the
-        # first of any equals.
-        fqs.sort(key=lambda x: (x[0].part, self._vert_content(x[0].vert)))
-        try:
-            _, excl = max(fqs, key=lambda x: len(x[1] & to_loop))
-        except ValueError:
-            pass
-        else:
-            to_loop -= excl
 
         if self._opt.rand_constr:
             to_loop = list(to_loop)
