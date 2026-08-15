@@ -2690,11 +2690,20 @@ class _Optimizer:
             continue
 
         # The factors with each dimension.
+        #
+        # The dimensions are looped over in their own order here, rather than
+        # in the order the symbols come out of the factor.  ``atoms`` gives a
+        # set, which iterates differently from run to run, and that order is
+        # inherited by everything below: the order the chunks are built in, and
+        # within a chunk the order of its dimensions, which ends up as the
+        # index order of the intermediates.  Taking it from a set makes the
+        # whole optimization depend on the hash seed.
         factors_with = collections.defaultdict(list)
         for i, v in enumerate(factors):
-            for j in v.atoms(Symbol):
-                if j in dumm2dim:
-                    factors_with[dumm2dim[j]].append(i)
+            symbs = v.atoms(Symbol)
+            for j, dim in dumm2dim.items():
+                if j in symbs:
+                    factors_with[dim].append(i)
                 continue
             continue
 

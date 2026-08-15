@@ -9,7 +9,7 @@ tested here.
 
 import pytest
 from drudge import Range, Drudge
-from sympy import symbols, IndexedBase
+from sympy import symbols, Symbol, IndexedBase
 
 from gristmill import optimize, verify_eval_seq, get_flop_cost
 
@@ -371,7 +371,10 @@ def test_disconnected_outer_product_factorization(three_ranges):
     assert leading_cost == 4 * m ** 2
 
 
-@pytest.mark.xfail(reason='TODO: Needs investigation')
+@pytest.mark.xfail(reason=(
+    'The common Z is not factored out, so a single step comes back where two '
+    'are wanted.  See https://github.com/DrudgeCAS/gristmill/issues/31'
+))
 def test_factorization_needing_canonicalization(three_ranges):
     """Test a simple factorization needing canonicalization.
 
