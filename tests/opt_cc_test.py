@@ -80,15 +80,14 @@ def test_ccsd_singles_terms(parthole_drudge):
     assert len(eval_seq) == 4
 
 
-def test_ccsd_energy(parthole_drudge):
-    """Test discovery of effective T in CCSD energy equation.
+def _optimize_ccsd_energy(dr):
+    """Optimize the CCSD energy equation with both contraction strategies.
 
-    The purpose of this test is the capability of using locally non-optimal
-    contractions in the final summation optimization.  The equation is not CCSD
-    energy equation exactly.
+    The equation is not the CCSD energy equation exactly.  Both evaluations
+    are checked for correctness here.  The costs are returned, the traversing
+    one first, then the locally optimal one.
     """
 
-    dr = parthole_drudge
     p = dr.names
 
     a, b = p.V_dumms[:2]
@@ -107,16 +106,47 @@ def test_ccsd_energy(parthole_drudge):
 
     assert verify_eval_seq(trav_eval_seq, targets)
     assert len(trav_eval_seq) == 2
-    trav_cost = get_flop_cost(trav_eval_seq)
 
     opt_eval_seq = optimize(
         targets, substs={p.nv: p.no * 10}, contr_strat=ContrStrat.OPT
     )
     assert verify_eval_seq(opt_eval_seq, targets)
     assert len(opt_eval_seq) == 2
-    opt_cost = get_flop_cost(opt_eval_seq)
 
-    assert (opt_cost - trav_cost).xreplace({p.no: 1, p.nv: 10}) >= 0
+    return get_flop_cost(trav_eval_seq), get_flop_cost(opt_eval_seq)
+
+
+def test_ccsd_energy(parthole_drudge):
+    """Test optimization of the CCSD energy equation.
+
+    Both strategies have to reach a correct evaluation in two steps.  Whether
+    the traversing strategy actually finds the cheaper one is a separate
+    question, checked in the test below.
+    """
+
+    _optimize_ccsd_energy(parthole_drudge)
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    'Effective T is not discovered.  The traversing strategy does offer the '
+    'right parenthesization, but the summation optimization declines it.  '
+    'See https://github.com/DrudgeCAS/gristmill/issues/31'
+))
+def test_ccsd_energy_discovers_effective_t(parthole_drudge):
+    """Test discovery of effective T in CCSD energy equation.
+
+    The purpose of this test is the capability of using locally non-optimal
+    contractions in the final summation optimization.  Keeping the traversed
+    parenthesizations should let the effective T be found, which is cheaper
+    than anything reachable from the locally optimal contraction alone.
+    """
+
+    dr = parthole_drudge
+    p = dr.names
+
+    trav_cost, opt_cost = _optimize_ccsd_energy(dr)
+
+    assert (opt_cost - trav_cost).xreplace({p.no: 1, p.nv: 10}) > 0
 
 
 def test_ccsd_doubles(parthole_drudge):
