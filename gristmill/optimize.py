@@ -2690,11 +2690,19 @@ class _Optimizer:
             continue
 
         # The factors with each dimension.
+        #
+        # The dimensions of a factor are sorted before being taken, since
+        # ``atoms`` gives a set and that iterates differently from run to run.
+        # The order is inherited by everything below: the order the chunks are
+        # built in, and within a chunk the order of its dimensions, which ends
+        # up as the index order of the intermediates.  Taking it from a set
+        # makes the whole optimization depend on the hash seed.
         factors_with = collections.defaultdict(list)
         for i, v in enumerate(factors):
-            for j in v.atoms(Symbol):
-                if j in dumm2dim:
-                    factors_with[dumm2dim[j]].append(i)
+            for dim in sorted(
+                    dumm2dim[j] for j in v.atoms(Symbol) if j in dumm2dim
+            ):
+                factors_with[dim].append(i)
                 continue
             continue
 
@@ -2788,7 +2796,17 @@ class _Optimizer:
             interms[factor_idxes] = interm
             return interm
 
-        for k, v in res.items():
+        # The memoir arrives as a dictionary built from a C++ unordered map,
+        # whose iteration order is implementation defined.  libstdc++ and
+        # libc++ disagree, and the order the intermediates are formed in
+        # decides which of them get matched against each other, so the
+        # optimization used to give different answers on Linux and on macOS.
+        # Sorting removes that.
+        #
+        # Which order is a real choice, not a formality: the ascending one
+        # loses the effective T of the CCSD energy equation.  That the answer
+        # depends on it at all is a weakness of the greedy constriction.
+        for k, v in sorted(res.items(), reverse=True):
             assert len(k) > 0
             target: _Interm = form_interm(k)
             target_node = target.node
