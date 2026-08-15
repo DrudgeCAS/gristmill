@@ -3,9 +3,9 @@
 
 import pytest
 from drudge import Drudge, Range
-from sympy import symbols, IndexedBase, conjugate
+from sympy import symbols, Symbol, IndexedBase, conjugate
 
-from gristmill import optimize, verify_eval_seq, get_flop_cost
+from gristmill import optimize, verify_eval_seq, get_flop_cost, ContrStrat
 
 
 @pytest.fixture(scope='module')
@@ -28,6 +28,33 @@ def simple_drudge(spark_ctx):
     dr.ds = dumms
 
     return dr
+
+
+def test_summation_shared_by_four_factors(simple_drudge):
+    """Test a summation involved by more than two factors.
+
+    In a classical tensor contraction, every summation is involved by exactly
+    two factors.  Here a single summation is involved by four, which the
+    parenthesization search used to mishandle: it could skip every candidate
+    partition and leave the subproblem with no evaluation at all, crashing the
+    interpreter outright under the ``OPT`` and ``GREEDY`` strategies.
+
+    There is only one way to evaluate this, so all strategies have to agree.
+    """
+
+    dr = simple_drudge
+    a = dr.ds[0]
+
+    x, y, z, w = (IndexedBase(i) for i in ['x', 'y', 'z', 'w'])
+    targets = [dr.define_einst(Symbol('s'), x[a] * y[a] * z[a] * w[a])]
+
+    costs = []
+    for strat in ContrStrat:
+        eval_seq = optimize(targets, contr_strat=strat)
+        assert verify_eval_seq(eval_seq, targets)
+        costs.append(get_flop_cost(eval_seq))
+
+    assert all(i == costs[0] for i in costs)
 
 
 def test_simple_scalar_optimization(spark_ctx):
