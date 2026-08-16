@@ -57,6 +57,32 @@ def test_summation_shared_by_four_factors(simple_drudge):
     assert all(i == costs[0] for i in costs)
 
 
+def test_sum_with_an_index_free_product(simple_drudge):
+    """A sum in which one term reduces to an index-free product.
+
+    After the shared factor is pulled out, the second term leaves a scalar
+    behind, and the optimizer sends a product with no index at all to the
+    parenthesization extension.  That used to segfault the interpreter
+    (issue #45), through a null owning handle in cpypp.
+    """
+
+    dr = simple_drudge
+    a, b, c = dr.ds[:3]
+
+    q_mat, v = IndexedBase('Q'), IndexedBase('V')
+    q, s = IndexedBase('q'), IndexedBase('s')
+    targets = [dr.define_einst(
+        Symbol('res'),
+        q_mat[a, b] * q[a] * s[b]
+        + 2 * q_mat[a, b] * q_mat[a, b]
+        - q_mat[a, b] * v[a, c] * v[c, b]
+    )]
+
+    for strat in ContrStrat:
+        eval_seq = optimize(targets, contr_strat=strat)
+        assert verify_eval_seq(eval_seq, targets)
+
+
 def test_simple_scalar_optimization(spark_ctx):
     """Test optimization of a simple scalar.
 
