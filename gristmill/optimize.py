@@ -753,12 +753,11 @@ def _biclique_tie_key(biclique: '_Biclique'):
     remaining ties the same way every time.
     """
 
-    nodes = biclique.constr_graph.graph.nodes
+    vert_key = biclique.constr_graph.vert_key
 
     def side(part):
         return tuple(sorted(
-            (nodes[vert]['info'].canon.sort_key, str(coeff))
-            for vert, coeff in part
+            (vert_key(vert), str(coeff)) for vert, coeff in part
         ))
 
     return (
@@ -915,6 +914,19 @@ class _BronKerbosch:
 
         assert len(subg) > 0
 
+        # The rank of each vertex in content order.  The search orders its
+        # candidates and orients its bicliques by this rank, so it consults
+        # nothing that follows the order edges arrived in.  Ranks are small
+        # integers, so the many comparisons in the search stay cheap; the sort
+        # keys behind them are computed once per vertex and cached in the
+        # graph.
+        vert_key = self._constr_graph.vert_key
+        self._rank = {
+            vert: rank for rank, vert in enumerate(sorted(
+                {i.vert for i in subg}, key=lambda v: (vert_key(v), v)
+            ))
+        }
+
         # For random constriction, if a biclique has ever been yielded.
         self._yielded = False
         yield from self._expand(subg, set(subg.keys()))
@@ -970,30 +982,11 @@ class _BronKerbosch:
                     best = gain
         return best
 
-    def _vert_content(self, vert: int):
-        """The canonical form of a vertex, as something orderable.
-
-        Vertex numbers come from the order edges happened to arrive.  Anything
-        in the search that consults them makes the result depend on that order.
-        The canonical form is content, so it does not move when the numbering
-        does.
-
-        `sort_key` rather than `str`.  A term's string leaves out the range of
-        its summation dummy, and drudge lets two ranges share dummy symbols, so
-        two different vertices can print the same.  Keying on the string would
-        collide them, fall back to the vertex number, and put back exactly the
-        dependence being removed.
-        """
-
-        return self._constr_graph.graph.nodes[vert]['info'].canon.sort_key
-
     def _canon_order(self, verts):
         """Put designated vertices in an order fixed by their content."""
 
-        return sorted(
-            verts,
-            key=lambda v: (v.part, self._vert_content(v.vert), v.vert)
-        )
+        rank = self._rank
+        return sorted(verts, key=lambda v: (v.part, rank[v.vert]))
 
     def _expand(
             self, subg: _DesVertsWDelta, cand: _DesVerts,
@@ -1044,9 +1037,10 @@ class _BronKerbosch:
             # reject both orientations and lose the biclique outright, while
             # `<=` admits both, and the two are then the same biclique so the
             # caller taking the best of them is unharmed.
+            rank = self._rank
             if_oriented = (
-                min(self._vert_content(i[0]) for i in curr[0])
-                <= min(self._vert_content(i[0]) for i in curr[1])
+                min(rank[i[0]] for i in curr[0])
+                <= min(rank[i[0]] for i in curr[1])
             )
 
         if if_maximal and if_profitable and if_oriented:
@@ -1100,24 +1094,28 @@ class _BronKerbosch:
 
         # to_loop need to be eagerly evaluated for avoiding complication with
         # the mutation of cand during the loop.
-        #
-        # The pivot exclusion that used to follow this is gone.  It rests on an
-        # exchange argument: a maximal biclique avoiding every neighbour of the
-        # pivot could have taken the pivot in, so it was not maximal.
-        # Maximality here is having no augmentation that raises the saving, and
-        # taking a vertex in can lower the saving, so the argument does not
-        # hold, and profitable bicliques were being dropped.  The bound above
-        # prunes on something that is true instead, and on the shapes measured
-        # it prunes harder as well.
 
+        rand_constr = self._opt.rand_constr
         if n_verts[0] == 0:
             to_loop = {i for i in cand if i.part == 0}
         elif n_verts[1] == 0:
             to_loop = {i for i in cand if i.part == 1}
-            # The orientation used to be forced here, by demanding this vertex
-            # exceed the first part's vertex.  That cut branches which the CAND
-            # bookkeeping had already made responsible for some bicliques, so
-            # those went missing.  It is now decided at the yield instead.
+            if exts[0] == exts[1] and not rand_constr:
+                # Take the second vertex only from above the first in content
+                # rank, so that each biclique is built in one orientation
+                # only.  This is sound because the first-part vertices are
+                # looped in ascending rank: the branch of a biclique's lowest
+                # ranked vertex runs before any other of its vertices has
+                # been dropped from CAND, and there every other vertex of the
+                # biclique ranks above it.  It used to key on the vertex
+                # numbers, whose order follows the arrival of edges, and the
+                # first-part loop did not follow that order, so branches were
+                # cut that the CAND bookkeeping had already made responsible
+                # for some bicliques.  Under random constriction the loop is
+                # shuffled, and the check at the yield does this job alone.
+                rank = self._rank
+                first_rank = rank[curr[0][0][0]]
+                to_loop = {i for i in to_loop if rank[i.vert] > first_rank}
             if self._req_an_opt:
                 to_loop = {i for i in to_loop if subg[i].exc_cost == 0}
         else:
@@ -1134,6 +1132,41 @@ class _BronKerbosch:
                 }
                 if cut_full:
                     to_loop = {random.choice(list(to_loop))}
+
+            # Pivoting, restricted to where its argument holds.  The pivot u
+            # augments the current biclique with positive saving.  Adding to
+            # the current biclique only vertices from the same part as u,
+            # each of which can still join once u has, leaves u able to join
+            # with that same positive saving, so no such biclique is maximal
+            # and the branches trying those vertices first can be skipped.
+            # The argument needs every biclique this branch is responsible
+            # for to be built from such vertices alone.  Candidates outside
+            # `to_loop`, those with negative saving now, may still join
+            # later, and a biclique taking one of them in need not be
+            # improvable by u.  So a pivot is only used when every such
+            # candidate is also a same-part vertex compatible with u.  At the
+            # second-vertex level the other part is always available, so no
+            # pivot is used there.
+            #
+            # The general rule from the thesis pivots from every vertex with
+            # positive saving, and lost profitable bicliques for exactly this
+            # reason (issue #43).
+            if not rand_constr and not cut_full:
+                outside = cand - to_loop
+                excl = None
+                excl_size = 0
+                for k, v in subg.items():
+                    if not v.saving > 0:
+                        continue
+                    fq = {i for i in subgq[k] if i.part == k.part}
+                    if not outside <= fq:
+                        continue
+                    size = len(fq & to_loop)
+                    if size > excl_size:
+                        excl = fq
+                        excl_size = size
+                if excl is not None:
+                    to_loop -= excl
 
         if self._opt.rand_constr:
             # Deliberately random, so leave the order alone.  Sorting here
@@ -1307,6 +1340,11 @@ class _ConstrGraph:
         self._verts = {}  # From canonicalized factor to the vertex number.
         self.terms = 0
 
+        # The sort key of the canonical content of each vertex, filled on
+        # demand.  Computing it is not cheap and the search asks for it a
+        # great many times.
+        self._vert_keys = {}
+
         # The optimal biclique in the current graph.  None when it is not yet
         # determined, False when it is determined that there is no profitable
         # biclique in the current graph.
@@ -1319,6 +1357,23 @@ class _ConstrGraph:
         return (
             (i, j) for i, j in self.graph.nodes(data='info')
         )
+
+    def vert_key(self, vert: int):
+        """The sort key of the canonical content of a vertex.
+
+        Vertex numbers come from the order edges happened to arrive.  Anything
+        in the search that consults them makes the result depend on that order.
+        The canonical content does not move when the numbering does, and its
+        `sort_key` orders it.  `sort_key` rather than `str`: a term's string
+        leaves out the range of its summation dummy, and drudge lets two ranges
+        share dummy symbols, so two different vertices can print the same.
+        """
+        keys = self._vert_keys
+        if vert in keys:
+            return keys[vert]
+        key = self.graph.nodes[vert]['info'].canon.sort_key
+        keys[vert] = key
+        return key
 
     def add_edge(
             self, node_infos: typing.Tuple[_VertInfo, _VertInfo],
