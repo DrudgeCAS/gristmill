@@ -2965,7 +2965,30 @@ def verify_eval_seq(
         if base in res_dict:
             # For results.
             ref = res_dict[base]
-            diff = (new_def - ref.rhs).simplify()
+
+            # The optimization canonicalizes the external indices of a result,
+            # so they need not be the symbols the caller wrote.  The two
+            # definitions are then the same up to a renaming of those indices,
+            # which the subtraction below would read as a difference.
+            #
+            # Instantiate the new definition at the reference's indices first.
+            # This goes through the definition's own indexing rather than a
+            # bare substitution, so that the summations inside cannot be
+            # captured: the caller is free to use as an external index a
+            # symbol the optimization picked as a dummy.
+            new_exts = [i for i, _ in new_def.exts]
+            ref_exts = [i for i, _ in ref.exts]
+            if len(new_exts) != len(ref_exts):
+                raise ValueError(
+                    'Unequal number of external indices for ', base,
+                    new_exts, ref_exts
+                )
+
+            new_res = new_def if new_exts == ref_exts else new_def[
+                tuple(ref_exts)
+            ]
+
+            diff = (new_res - ref.rhs).simplify()
             if diff != 0:
                 raise ValueError('Unequal definition for ', base)
             del res_dict[base]

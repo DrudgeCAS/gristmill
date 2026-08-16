@@ -2,7 +2,7 @@
 """
 
 import pytest
-from drudge import Drudge, Range
+from drudge import Drudge, Range, TensorDef
 from sympy import symbols, Symbol, IndexedBase, conjugate
 
 from gristmill import optimize, verify_eval_seq, get_flop_cost, ContrStrat
@@ -281,3 +281,75 @@ def test_get_cost_on_zero_cost(simple_drudge):
     ]:
         assert i == 0
         continue
+
+
+@pytest.mark.parametrize('ext_names,sum_name', [
+    ('a b', 'c'),
+    ('a b', 'e'),
+    ('b c', 'd'),
+    ('c d', 'e'),
+    ('f g', 'h'),
+    ('g h', 'a'),
+])
+def test_verification_of_a_result_with_any_external_symbols(
+        simple_drudge, ext_names, sum_name
+):
+    """Verification must not depend on which symbols the caller used.
+
+    The optimization canonicalizes the external indices of a result onto the
+    leading dummies of the range, so they need not be the symbols that were
+    written.  The verification used to subtract the two definitions as they
+    stood, read that renaming as a difference, and reject a correct answer
+    for every choice of external symbols but the canonical one.
+
+    The last case matters most: the caller's external symbols are the ones
+    the optimization picked as a summation dummy inside the result, so
+    lining the two up naively would capture that summation.
+    """
+
+    dr = simple_drudge
+    i0, i1 = symbols(ext_names)
+    k = symbols(sum_name)
+
+    x = IndexedBase('X')
+    y, z, u = (IndexedBase(i) for i in ['Y', 'Z', 'U'])
+    res = IndexedBase('res')
+
+    targets = [dr.define_einst(
+        res[i0, i1],
+        x[i0, k] * y[k, i1] + x[i0, k] * z[k, i1] + u[i0, i1]
+    )]
+
+    eval_seq = optimize(targets)
+    assert verify_eval_seq(eval_seq, targets)
+
+
+def test_verification_still_rejects_a_wrong_result(simple_drudge):
+    """The check has to keep failing on an answer that is actually wrong.
+
+    Guards the fix above from being a check that passes everything, in both
+    the canonical spelling of the external indices and another one.
+    """
+
+    dr = simple_drudge
+
+    x = IndexedBase('X')
+    y, z, u = (IndexedBase(i) for i in ['Y', 'Z', 'U'])
+    res = IndexedBase('res')
+
+    for ext_names, sum_name in [('a b', 'c'), ('c d', 'e')]:
+        i0, i1 = symbols(ext_names)
+        k = symbols(sum_name)
+        targets = [dr.define_einst(
+            res[i0, i1],
+            x[i0, k] * y[k, i1] + x[i0, k] * z[k, i1] + u[i0, i1]
+        )]
+
+        eval_seq = list(optimize(targets))
+        assert verify_eval_seq(eval_seq, targets)
+
+        # Scaling the result makes it wrong, whatever the indices are called.
+        final = eval_seq[-1]
+        eval_seq[-1] = TensorDef(final.base, final.exts, final.rhs * 2)
+        with pytest.raises(ValueError):
+            verify_eval_seq(eval_seq, targets)
