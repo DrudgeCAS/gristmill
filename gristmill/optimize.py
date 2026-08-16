@@ -2960,9 +2960,13 @@ class _Optimizer:
         # optimization used to give different answers on Linux and on macOS.
         # Sorting removes that.
         #
-        # Which order is a real choice, not a formality: the ascending one
-        # loses the effective T of the CCSD energy equation.  That the answer
-        # depends on it at all is a weakness of the greedy constriction.
+        # The direction used to matter: the ascending walk lost the effective
+        # T of the CCSD energy equation, because the biclique search read the
+        # vertex numbers, which follow this walk.  The search no longer reads
+        # them, and the walk order is now only a reproducibility measure: the
+        # test suite and the generated problem sets give the same answers
+        # under either direction and under random permutations of the walk.
+        # The descending direction is kept as it is, since nothing hangs on it.
         for k, v in sorted(res.items(), reverse=True):
             assert len(k) > 0
             target: _Interm = form_interm(k)
