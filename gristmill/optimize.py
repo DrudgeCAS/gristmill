@@ -932,6 +932,15 @@ class _BronKerbosch:
         # pins down.  Adding vertices does shift the ranks themselves, but
         # not the order of the vertices already present, which is what the
         # comparisons read.
+        #
+        # What this does not buy: the order is still one particular order,
+        # and the key ends in the amplitude, which carries the tensors' own
+        # names.  Renaming the tensors of a problem therefore reorders the
+        # vertices and can land the greedy search somewhere else.  So the
+        # answer is a function of the mathematics and of the names given to
+        # the tensors, rather than of the order the graph was built in.  The
+        # names are at least the user's to choose and stay put from run to
+        # run, which the numbering did not.
         vert_key = self._constr_graph.vert_key
         self._rank = {
             vert: rank for rank, vert in enumerate(sorted(
