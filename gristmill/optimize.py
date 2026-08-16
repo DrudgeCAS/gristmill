@@ -757,7 +757,7 @@ def _biclique_tie_key(biclique: '_Biclique'):
 
     def side(part):
         return tuple(sorted(
-            (str(nodes[vert]['info'].canon), str(coeff))
+            (nodes[vert]['info'].canon.sort_key, str(coeff))
             for vert, coeff in part
         ))
 
@@ -970,16 +970,22 @@ class _BronKerbosch:
                     best = gain
         return best
 
-    def _vert_content(self, vert: int) -> str:
+    def _vert_content(self, vert: int):
         """The canonical form of a vertex, as something orderable.
 
         Vertex numbers come from the order edges happened to arrive.  Anything
         in the search that consults them makes the result depend on that order.
         The canonical form is content, so it does not move when the numbering
         does.
+
+        `sort_key` rather than `str`.  A term's string leaves out the range of
+        its summation dummy, and drudge lets two ranges share dummy symbols, so
+        two different vertices can print the same.  Keying on the string would
+        collide them, fall back to the vertex number, and put back exactly the
+        dependence being removed.
         """
 
-        return str(self._constr_graph.graph.nodes[vert]['info'].canon)
+        return self._constr_graph.graph.nodes[vert]['info'].canon.sort_key
 
     def _canon_order(self, verts):
         """Put designated vertices in an order fixed by their content."""
@@ -1032,9 +1038,15 @@ class _BronKerbosch:
         # under the CAND bookkeeping.
         if_oriented = True
         if exts[0] == exts[1] and all(i > 0 for i in n_verts):
+            # `<=` rather than `<`.  The two sides are disjoint in every
+            # reachable case, so this behaves as `<` and keeps one orientation
+            # of the pair.  Were a vertex ever to sit in both sides, `<` would
+            # reject both orientations and lose the biclique outright, while
+            # `<=` admits both, and the two are then the same biclique so the
+            # caller taking the best of them is unharmed.
             if_oriented = (
                 min(self._vert_content(i[0]) for i in curr[0])
-                < min(self._vert_content(i[0]) for i in curr[1])
+                <= min(self._vert_content(i[0]) for i in curr[1])
             )
 
         if if_maximal and if_profitable and if_oriented:
@@ -1124,10 +1136,14 @@ class _BronKerbosch:
                     to_loop = {random.choice(list(to_loop))}
 
         if self._opt.rand_constr:
-            to_loop = list(to_loop)
-            random.shuffle(to_loop)
+            # Deliberately random, so leave the order alone.  Sorting here
+            # would undo the shuffle and quietly turn `rand_constr` off.
+            order = list(to_loop)
+            random.shuffle(order)
+        else:
+            order = self._canon_order(to_loop)
 
-        for q_v in self._canon_order(to_loop):
+        for q_v in order:
             q_d = subg[q_v]
             part, vert = q_v.part, q_v.vert
 
