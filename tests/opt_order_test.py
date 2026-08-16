@@ -15,7 +15,7 @@ from drudge import Drudge, PartHoleDrudge, Range
 from sympy import symbols, Symbol, IndexedBase, Rational
 
 import gristmill.optimize
-from gristmill import optimize, verify_eval_seq, get_flop_cost
+from gristmill import optimize, verify_eval_seq, get_flop_cost, ContrStrat
 
 _REAL_SORTED = sorted
 
@@ -186,3 +186,55 @@ def test_rand_constr_gives_random_constrictions(spark_ctx):
         seen.add(tuple(str(i) for i in eval_seq))
 
     assert len(seen) > 1
+
+
+def test_unrelated_term_does_not_disturb_the_rest(spark_ctx):
+    """A term sharing nothing with the rest must not change how the rest goes.
+
+    The extra term here shares no tensor with the other three, so it cannot
+    take part in any constriction with them.  Optimizing the two together
+    should therefore cost exactly what optimizing them apart costs, plus the
+    one addition that puts the two scalars together.
+
+    It did not.  The vertices of a constriction graph used to be ordered by a
+    number handed out as edges arrived, so the extra term shifted the numbers
+    of every vertex belonging to the others, and the search read those
+    numbers.  On master the three terms alone come out at ``4 n^2 + 4 n``,
+    while in the presence of the extra term they come out at ``2 n^2 + 4 n``:
+    an unrelated term, by luck, buying a better factorization.
+
+    This pins one instance, not a theorem.  The outer loop is greedy and the
+    branch and bound carries an incumbent, so adding terms can legitimately
+    change what is found.  What it guards is the search reading anything that
+    follows the order the graph happened to be built in.
+    """
+
+    dr = Drudge(spark_ctx)
+    n = symbols('n')
+    r = Range('r', 0, n)
+    dr.set_dumms(r, symbols('a b c d e f g h'))
+    dr.add_default_resolver(r)
+    a, b = symbols('a b')
+
+    x = IndexedBase('X')
+    y, z, u = (IndexedBase(i) for i in ['y', 'z', 'u'])
+    p, q = IndexedBase('P'), IndexedBase('Q')
+
+    core = (
+        x[a, b] * z[a] * y[b]
+        + 2 * x[a, b] * y[a] * y[b]
+        - x[a, b] * u[a] * y[b]
+    )
+    extra = p[a, b] * q[a, b]
+
+    def cost(amp, strat):
+        targets = [dr.define_einst(Symbol('e'), amp)]
+        eval_seq = optimize(targets, contr_strat=strat)
+        assert verify_eval_seq(eval_seq, targets)
+        return get_flop_cost(eval_seq)
+
+    for strat in ContrStrat:
+        together = cost(core + extra, strat)
+        apart = cost(core, strat) + cost(extra, strat)
+        # The one extra operation is adding the two scalars together.
+        assert (together - apart).simplify() == 1, strat

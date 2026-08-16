@@ -920,6 +920,18 @@ class _BronKerbosch:
         # integers, so the many comparisons in the search stay cheap; the sort
         # keys behind them are computed once per vertex and cached in the
         # graph.
+        #
+        # What the search actually asks is never a vertex's rank on its own,
+        # only comparisons: does this candidate come before that one, does
+        # this part hold the earlier vertex.  Under content, the answer for
+        # any two vertices is fixed by those two alone.  Under the numbering
+        # it depended on everything inserted before both, so a term elsewhere
+        # in the sum, sharing no factor and unable to join any biclique here,
+        # still shifted the numbers and could change what was chosen.  That
+        # is the property `test_unrelated_term_does_not_disturb_the_rest`
+        # pins down.  Adding vertices does shift the ranks themselves, but
+        # not the order of the vertices already present, which is what the
+        # comparisons read.
         vert_key = self._constr_graph.vert_key
         self._rank = {
             vert: rank for rank, vert in enumerate(sorted(
