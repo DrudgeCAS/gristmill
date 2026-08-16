@@ -1024,11 +1024,17 @@ class _BronKerbosch:
         ) and any(i > 1 for i in n_verts) and curr_saving >= 0
 
         # The two parts of a biclique are interchangeable, so each one would
-        # otherwise be generated twice.  Keep only the orientation where the
-        # lowest numbered vertex sits in the first part.  This is decided on
-        # the finished biclique rather than on the pair it was started from,
-        # so that no branch is cut off from a biclique it is responsible for
-        # under the CAND bookkeeping.
+        # otherwise be generated twice.  Keep only the orientation whose first
+        # part holds the vertex lowest in content rank.  The candidates for
+        # the second vertex are already restricted the same way, which is what
+        # keeps the search from walking both orientations; this is the check
+        # that the finished biclique has to pass, and it is the only one under
+        # random constriction, where the loop is shuffled and that restriction
+        # is not applied.
+        #
+        # Content rank, not the vertex number.  Numbers follow the order edges
+        # arrived, so an orientation rule reading them decides which bicliques
+        # are emitted at all on an accident of the input order.
         if_oriented = True
         if exts[0] == exts[1] and all(i > 0 for i in n_verts):
             # `<=` rather than `<`.  The two sides are disjoint in every
@@ -1447,6 +1453,9 @@ class _ConstrGraph:
 
             saving = biclique.saving
 
+            # The key is only needed on a tie, and it is not cheap, so it is
+            # computed at most once for each biclique and reused below.
+            key = None
             if opt_saving is None or saving > opt_saving:
                 better = True
             elif saving == opt_saving:
@@ -1454,13 +1463,16 @@ class _ConstrGraph:
                 # wins, which makes the result depend on the order the
                 # vertices happened to be numbered in.  Break the tie on the
                 # content instead.
-                better = _biclique_tie_key(biclique) < opt_key
+                key = _biclique_tie_key(biclique)
+                better = key < opt_key
             else:
                 better = False
 
             if better:
                 opt_saving = saving
-                opt_key = _biclique_tie_key(biclique)
+                opt_key = key if key is not None else _biclique_tie_key(
+                    biclique
+                )
                 # Make copy only when we need them.
                 parts = biclique.parts
                 assert len(parts) == 2
@@ -1577,16 +1589,21 @@ class _ConstrGraphs(typing.Dict[_LastStepIdxes, _ConstrGraph]):
             # Same tie as inside a single graph, one level up: the graphs are
             # walked in the order they were created, so without a tie-break
             # the winner among equally profitable ones depends on that order.
+            # As there, the key is built at most once for each graph.
+            key = None
             if opt_saving is None or curr_opt_saving > opt_saving:
                 better = True
             elif curr_opt_saving == opt_saving:
-                better = _biclique_tie_key(curr_opt_biclique) < opt_key
+                key = _biclique_tie_key(curr_opt_biclique)
+                better = key < opt_key
             else:
                 better = False
 
             if better:
                 opt_saving = curr_opt_saving
-                opt_key = _biclique_tie_key(curr_opt_biclique)
+                opt_key = key if key is not None else _biclique_tie_key(
+                    curr_opt_biclique
+                )
                 opt_last_step_idxes = last_step_idxes
                 opt_biclique = curr_opt_biclique
 
