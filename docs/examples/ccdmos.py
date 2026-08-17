@@ -27,7 +27,7 @@ NVNO_RATIO = 1
 
 def get_eval_seq():
     """Get the evaluation sequence for the benchmark."""
-    conf = SparkConf().setAppName('CCD-mosaic')
+    conf = SparkConf().setAppName("CCD-mosaic")
     ctx = SparkContext(conf=conf)
 
     dr = PartHoleDrudge(ctx)
@@ -37,17 +37,16 @@ def get_eval_seq():
     a, b, c, d = p.V_dumms[:4]
     i, j, k, l = p.O_dumms[:4]
     u = dr.two_body
-    t = IndexedBase('t')
+    t = IndexedBase("t")
     dr.set_dbbar_base(t, 2)
 
-    r = IndexedBase('r')
+    r = IndexedBase("r")
     tensor = dr.define_einst(
-        r[a, b, i, j],
-        t[a, b, l, j] * t[c, d, i, k] * u[k, l, c, d]
+        r[a, b, i, j], t[a, b, l, j] * t[c, d, i, k] * u[k, l, c, d]
     )
     targets = [tensor]
     eval_seq = optimize(
-        targets, substs={p.nv: p.no * NVNO_RATIO}, interm_fmt='tau{}'
+        targets, substs={p.nv: p.no * NVNO_RATIO}, interm_fmt="tau{}"
     )
 
     return eval_seq, types.SimpleNamespace(no=p.no, nv=p.nv)
@@ -69,25 +68,22 @@ def main():
     flop_cost_expr = get_flop_cost(eval_seq)
 
     for no in nos:
-        print('Benchmark NO={}'.format(no))
+        print("Benchmark NO={}".format(no))
         nv = no * NVNO_RATIO
         flop_cost = flop_cost_expr.xreplace({symbs.no: no, symbs.nv: nv})
 
         new_timings = tuple(
-            run_job(eval_seq, no, nv)
-            for run_job in [run_fortran, run_einsum]
+            run_job(eval_seq, no, nv) for run_job in [run_fortran, run_einsum]
         )
         timings.append(new_timings)
-        flops.append(tuple(
-            flop_cost / i for i in new_timings
-        ))
+        flops.append(tuple(flop_cost / i for i in new_timings))
         continue
 
-    with open('timing', 'w') as fp:
+    with open("timing", "w") as fp:
         for i, j in zip(nos, timings):
             print(i, *j, file=fp)
 
-    with open('flops', 'w') as fp:
+    with open("flops", "w") as fp:
         for i, j in zip(nos, flops):
             print(i, *j, file=fp)
             continue
@@ -102,17 +98,23 @@ def run_fortran(eval_seq, no, nv):
         no=no, nv=nv, decls=decls, evals=evals
     )
 
-    with open('ccdmos_run.f90', 'w') as fp:
+    with open("ccdmos_run.f90", "w") as fp:
         fp.write(fortran_code)
 
-    stat = subprocess.run([
-        'gfortran', '-fopenmp', '-o', 'f',
-        '-Wl,-stack_size', '-Wl,1000000000',
-        'ccdmos_run.f90'
-    ])
+    stat = subprocess.run(
+        [
+            "gfortran",
+            "-fopenmp",
+            "-o",
+            "f",
+            "-Wl,-stack_size",
+            "-Wl,1000000000",
+            "ccdmos_run.f90",
+        ]
+    )
     assert stat.returncode == 0
 
-    stat = subprocess.run(['./f'], stdout=subprocess.PIPE)
+    stat = subprocess.run(["./f"], stdout=subprocess.PIPE)
     timing = float(stat.stdout.decode())
 
     return timing
@@ -157,11 +159,11 @@ def run_einsum(eval_seq, no, nv):
     evals = printer.print_eval(eval_seq, base_indent=0)
 
     code = _EINSUM_TEMPLATE.render(no=no, nv=nv, evals=evals)
-    with open('ccdmos_run.py', 'w') as fp:
+    with open("ccdmos_run.py", "w") as fp:
         fp.write(code)
 
     stat = subprocess.run(
-        ['python3', './ccdmos_run.py'], stdout=subprocess.PIPE
+        ["python3", "./ccdmos_run.py"], stdout=subprocess.PIPE
     )
     timing = float(stat.stdout.decode())
 
@@ -188,5 +190,5 @@ print(time.time() - beg_time)
 
 """)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

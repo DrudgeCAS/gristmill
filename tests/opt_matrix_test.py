@@ -27,23 +27,20 @@ def three_ranges(spark_ctx):
     dr = Drudge(spark_ctx)
 
     # The sizes.
-    m, n, l = symbols('m n l')
+    m, n, l = symbols("m n l")
 
     # The ranges.
-    m_range = Range('M', 0, m)
-    n_range = Range('N', 0, n)
-    l_range = Range('L', 0, l)
+    m_range = Range("M", 0, m)
+    n_range = Range("N", 0, n)
+    l_range = Range("L", 0, l)
 
-    dr.set_dumms(m_range, symbols('a b c d e f g'))
-    dr.set_dumms(n_range, symbols('i j k l m n'))
-    dr.set_dumms(l_range, symbols('p q r'))
+    dr.set_dumms(m_range, symbols("a b c d e f g"))
+    dr.set_dumms(n_range, symbols("i j k l m n"))
+    dr.set_dumms(l_range, symbols("p q r"))
     dr.add_resolver_for_dumms()
     dr.set_name(m, n, l)
 
-    dr.substs = {
-        n: m * 2,
-        l: m * 3
-    }
+    dr.substs = {n: m * 2, l: m * 3}
 
     return dr
 
@@ -71,21 +68,20 @@ def test_matrix_chain(three_ranges):
     m, n, l = p.m, p.n, p.l
 
     # The indexed bases.
-    x = IndexedBase('x', shape=(m, n))
-    y = IndexedBase('y', shape=(n, l))
-    z = IndexedBase('z', shape=(l, m))
+    x = IndexedBase("x", shape=(m, n))
+    y = IndexedBase("y", shape=(n, l))
+    z = IndexedBase("z", shape=(l, m))
 
-    target_base = IndexedBase('t')
+    target_base = IndexedBase("t")
     target = dr.define_einst(
-        target_base[p.a, p.b],
-        x[p.a, p.i] * y[p.i, p.p] * z[p.p, p.b]
+        target_base[p.a, p.b], x[p.a, p.i] * y[p.i, p.p] * z[p.p, p.b]
     )
 
     # Perform the factorization.
     targets = [target]
     stats = {}
     eval_seq = optimize(targets, substs=dr.substs, stats=stats)
-    assert stats['Number of nodes'] < 2 ** 3
+    assert stats["Number of nodes"] < 2**3
     assert len(eval_seq) == 2
 
     # Check the correctness.
@@ -94,12 +90,12 @@ def test_matrix_chain(three_ranges):
     # Check the cost.
     cost = get_flop_cost(eval_seq)
     leading_cost = get_flop_cost(eval_seq, leading=True)
-    expected_cost = 2 * l * m * n + 2 * m ** 2 * n
+    expected_cost = 2 * l * m * n + 2 * m**2 * n
     assert cost == expected_cost
     assert leading_cost == expected_cost
 
 
-@pytest.mark.parametrize('rand_constr', [True, False])
+@pytest.mark.parametrize("rand_constr", [True, False])
 def test_shallow_matrix_factorization(three_ranges, rand_constr):
     """Test a shallow matrix multiplication factorization problem.
 
@@ -126,20 +122,22 @@ def test_shallow_matrix_factorization(three_ranges, rand_constr):
     p = dr.names
 
     m = p.m
-    a, b, c, d = p.a, p.b, p.c, p.d
+    a, b, c = p.a, p.b, p.c
 
     # The indexed bases.
-    x = IndexedBase('X')
-    y = IndexedBase('Y')
-    u = IndexedBase('U')
-    v = IndexedBase('V')
-    t = IndexedBase('T')
+    x = IndexedBase("X")
+    y = IndexedBase("Y")
+    u = IndexedBase("U")
+    v = IndexedBase("V")
+    t = IndexedBase("T")
 
     # The target.
     target = dr.define_einst(
         t[a, b],
-        4 * x[a, c] * u[c, b] + 2 * x[a, c] * v[c, b]
-        - 2 * y[a, c] * u[c, b] - y[a, c] * v[c, b]
+        4 * x[a, c] * u[c, b]
+        + 2 * x[a, c] * v[c, b]
+        - 2 * y[a, c] * u[c, b]
+        - y[a, c] * v[c, b],
     )
     targets = [target]
 
@@ -153,10 +151,10 @@ def test_shallow_matrix_factorization(three_ranges, rand_constr):
     # Test the cost.
     cost = get_flop_cost(res)
     leading_cost = get_flop_cost(res, leading=True)
-    assert cost == 2 * m ** 3 + 2 * m ** 2
-    assert leading_cost == 2 * m ** 3
+    assert cost == 2 * m**3 + 2 * m**2
+    assert leading_cost == 2 * m**3
     cost = get_flop_cost(res, ignore_consts=False)
-    assert cost == 2 * m ** 3 + 4 * m ** 2
+    assert cost == 2 * m**3 + 4 * m**2
 
 
 def test_deep_matrix_factorization(three_ranges):
@@ -186,11 +184,11 @@ def test_deep_matrix_factorization(three_ranges):
     a, b, c, d = p.a, p.b, p.c, p.d
 
     # The indexed bases.
-    x = IndexedBase('X')
-    y = IndexedBase('Y')
-    u = IndexedBase('U')
-    v = IndexedBase('V')
-    t = IndexedBase('T')
+    x = IndexedBase("X")
+    y = IndexedBase("Y")
+    u = IndexedBase("U")
+    v = IndexedBase("V")
+    t = IndexedBase("T")
 
     # The target.
     target = dr.define_einst(
@@ -208,10 +206,10 @@ def test_deep_matrix_factorization(three_ranges):
     # Test the cost.
     cost = get_flop_cost(res)
     leading_cost = get_flop_cost(res, leading=True)
-    assert cost == 4 * m ** 3 + m ** 2
-    assert leading_cost == 4 * m ** 3
+    assert cost == 4 * m**3 + m**2
+    assert leading_cost == 4 * m**3
     cost = get_flop_cost(res, ignore_consts=False)
-    assert cost == 4 * m ** 3 + 2 * m ** 2
+    assert cost == 4 * m**3 + 2 * m**2
 
     # Test disabling summation optimization.
     res = optimize(targets, opt_sum=False)
@@ -245,18 +243,20 @@ def test_factorization_of_two_products(three_ranges):
     a, b, c = p.a, p.b, p.c
 
     # The indexed bases.
-    x = IndexedBase('X')
-    y = IndexedBase('Y')
-    u = IndexedBase('U')
-    v = IndexedBase('V')
-    t = IndexedBase('T')
+    x = IndexedBase("X")
+    y = IndexedBase("Y")
+    u = IndexedBase("U")
+    v = IndexedBase("V")
+    t = IndexedBase("T")
 
     # The target.
     target = dr.define_einst(
-        IndexedBase('r')[a, b],
-        6 * x[a, c] * u[c, b] + 10 * x[a, c] * v[c, b]
-        - 77 * y[a, c] * u[c, b] - 91 * y[a, c] * v[c, b]
-        + 17 * t[a, b]
+        IndexedBase("r")[a, b],
+        6 * x[a, c] * u[c, b]
+        + 10 * x[a, c] * v[c, b]
+        - 77 * y[a, c] * u[c, b]
+        - 91 * y[a, c] * v[c, b]
+        + 17 * t[a, b],
     )
     targets = [target]
 
@@ -270,7 +270,7 @@ def test_factorization_of_two_products(three_ranges):
 
     # Test the cost.
     cost = get_flop_cost(res)
-    assert cost == 4 * m ** 3 + 4 * m ** 2
+    assert cost == 4 * m**3 + 4 * m**2
 
 
 def test_general_matrix_problem(three_ranges):
@@ -296,25 +296,24 @@ def test_general_matrix_problem(three_ranges):
     dr = three_ranges
     p = dr.names
 
-    m, n, l = p.m, p.n, p.l
+    m = p.m
     a, b = p.a, p.b
     i = p.i
     p = p.p
 
-    f1 = IndexedBase('A')[a, i] + 2 * IndexedBase('B')[a, i]
-    f2 = 3 * IndexedBase('C')[i, p] + 5 * IndexedBase('D')[i, p]
-    f3 = 7 * IndexedBase('E')[p, b] + 13 * IndexedBase('F')[p, b]
-    f4 = 17 * IndexedBase('P')[a, i] + 19 * IndexedBase('Q')[a, i]
-    f5 = 23 * IndexedBase('X')[i, b] + 29 * IndexedBase('Y')[i, b]
+    f1 = IndexedBase("A")[a, i] + 2 * IndexedBase("B")[a, i]
+    f2 = 3 * IndexedBase("C")[i, p] + 5 * IndexedBase("D")[i, p]
+    f3 = 7 * IndexedBase("E")[p, b] + 13 * IndexedBase("F")[p, b]
+    f4 = 17 * IndexedBase("P")[a, i] + 19 * IndexedBase("Q")[a, i]
+    f5 = 23 * IndexedBase("X")[i, b] + 29 * IndexedBase("Y")[i, b]
 
     target = dr.define_einst(
-        IndexedBase('R')[a, b],
-        (f1 * f2 * f3 + f4 * f5).expand()
+        IndexedBase("R")[a, b], (f1 * f2 * f3 + f4 * f5).expand()
     )
     targets = [target]
     assert target.n_terms == 12
     assert get_flop_cost(targets).subs(dr.substs) == (
-            144 * m ** 4 + 16 * m ** 3 + 11 * m ** 2
+        144 * m**4 + 16 * m**3 + 11 * m**2
     )
 
     eval_seq = optimize(targets, substs=dr.substs)
@@ -323,7 +322,7 @@ def test_general_matrix_problem(three_ranges):
     assert verify_eval_seq(eval_seq, targets)
     assert len(eval_seq) == 7
     cost = get_flop_cost(eval_seq)
-    assert cost.subs(dr.substs) == 20 * m ** 3 + 16 * m ** 2
+    assert cost.subs(dr.substs) == 20 * m**3 + 16 * m**2
 
 
 #
@@ -333,26 +332,24 @@ def test_general_matrix_problem(three_ranges):
 
 
 def test_disconnected_outer_product_factorization(three_ranges):
-    """Test optimization of expressions with disconnected outer products.
-    """
+    """Test optimization of expressions with disconnected outer products."""
 
     dr = three_ranges
     p = dr.names
 
     m = p.m
-    a, b, c, d, e = p.a, p.b, p.c, p.d, p.e
+    a, b, c, e = p.a, p.b, p.c, p.e
 
     # The indexed bases.
-    u = IndexedBase('U')
-    x = IndexedBase('X')
-    y = IndexedBase('Y')
-    z = IndexedBase('Z')
-    t = IndexedBase('T')
+    u = IndexedBase("U")
+    x = IndexedBase("X")
+    y = IndexedBase("Y")
+    z = IndexedBase("Z")
+    t = IndexedBase("T")
 
     # The target.
     target = dr.define_einst(
-        t[a, b],
-        u[a, b] * z[c, e] * x[e, c] + u[a, b] * z[c, e] * y[e, c]
+        t[a, b], u[a, b] * z[c, e] * x[e, c] + u[a, b] * z[c, e] * y[e, c]
     )
     targets = [target]
 
@@ -366,8 +363,8 @@ def test_disconnected_outer_product_factorization(three_ranges):
     # Test the cost.
     cost = get_flop_cost(res)
     leading_cost = get_flop_cost(res, leading=True)
-    assert cost == 4 * m ** 2
-    assert leading_cost == 4 * m ** 2
+    assert cost == 4 * m**2
+    assert leading_cost == 4 * m**2
 
 
 def test_factorization_needing_canonicalization(three_ranges):
@@ -380,18 +377,15 @@ def test_factorization_needing_canonicalization(three_ranges):
     dr = three_ranges
     p = dr.names
 
-    m = p.m
     a, b = p.a, p.b
 
-    x = IndexedBase('X')
-    y = IndexedBase('Y')
-    z = IndexedBase('Z')
-    t = Symbol('T')
+    x = IndexedBase("X")
+    y = IndexedBase("Y")
+    z = IndexedBase("Z")
+    t = Symbol("T")
 
     # The target.
-    target = dr.define_einst(
-        t, x[b, a] * z[a, b] + y[a, b] * z[b, a]
-    )
+    target = dr.define_einst(t, x[b, a] * z[a, b] + y[a, b] * z[b, a])
     targets = [target]
 
     # The actual optimization.
@@ -433,14 +427,13 @@ def test_optimization_of_common_terms(three_ranges):
     dr = three_ranges
     p = dr.names
 
-    a, b, c, d = p.a, p.b, p.c, p.d
+    a, b = p.a, p.b
 
     # The indexed bases.
-    x = IndexedBase('x')
-    y = IndexedBase('y')
+    x = IndexedBase("x")
+    y = IndexedBase("y")
     t = dr.define_einst(
-        IndexedBase('t')[a, b],
-        x[a, b] - x[b, a] + 2 * y[a, b] - 2 * y[b, a]
+        IndexedBase("t")[a, b], x[a, b] - x[b, a] + 2 * y[a, b] - 2 * y[b, a]
     )
 
     targets = [t]
@@ -485,28 +478,22 @@ def test_eval_compression(three_ranges):
     i, j, k = p.i, p.j, p.k  # Big range
 
     # The indexed bases.
-    u = IndexedBase('U')
-    v = IndexedBase('V')
-    w = IndexedBase('W')
-    x = IndexedBase('X')
-    y = IndexedBase('Y')
+    u = IndexedBase("U")
+    v = IndexedBase("V")
+    w = IndexedBase("W")
+    x = IndexedBase("X")
+    y = IndexedBase("Y")
 
-    s = IndexedBase('S')
-    t1 = IndexedBase('T1')
-    t2 = IndexedBase('T2')
+    s = IndexedBase("S")
+    t1 = IndexedBase("T1")
+    t2 = IndexedBase("T2")
 
     # The target.
-    s_def = dr.define_einst(
-        s[i, j],
-        u[i, k] * x[k, j] + u[i, k] * y[k, j]
-    )
-    targets = [dr.define_einst(
-        t1[i, j],
-        s_def[i, a] * v[a, j]
-    ), dr.define_einst(
-        t2[i, j],
-        s_def[i, a] * w[a, j]
-    )]
+    s_def = dr.define_einst(s[i, j], u[i, k] * x[k, j] + u[i, k] * y[k, j])
+    targets = [
+        dr.define_einst(t1[i, j], s_def[i, a] * v[a, j]),
+        dr.define_einst(t2[i, j], s_def[i, a] * w[a, j]),
+    ]
 
     # The actual optimization.
     res = optimize(targets, substs=dr.substs)
@@ -516,7 +503,7 @@ def test_eval_compression(three_ranges):
     assert verify_eval_seq(res, targets, simplify=False)
 
 
-@pytest.mark.parametrize('res_at_end', [True, False])
+@pytest.mark.parametrize("res_at_end", [True, False])
 def test_interleaving_res_interm(three_ranges, res_at_end):
     r"""Test the interleaving of results and intermediates.
 
@@ -543,10 +530,10 @@ def test_interleaving_res_interm(three_ranges, res_at_end):
     p = dr.names
     a, b, c, d, e = p.a, p.b, p.c, p.d, p.e
 
-    x = IndexedBase('X')
-    y = IndexedBase('Y')
-    r1 = IndexedBase('R1')
-    r2 = IndexedBase('R2')
+    x = IndexedBase("X")
+    y = IndexedBase("Y")
+    r1 = IndexedBase("R1")
+    r2 = IndexedBase("R2")
 
     r1_def = dr.define_einst(r1[a, b], x[a, c] * y[c, b] * 2)
     r2_def = dr.define_einst(r2[a, b], x[a, c] * y[c, b] * x[d, e] * y[e, d])
@@ -564,5 +551,5 @@ def test_interleaving_res_interm(three_ranges, res_at_end):
     assert eval_seq[3].base == r2
 
     for i in eval_seq:
-        assert i.if_interm == (not (str(i.base)[0] == 'R'))
+        assert i.if_interm == (not (str(i.base)[0] == "R"))
         continue

@@ -1,16 +1,19 @@
-"""Tests about optimizations of problems from coupled-cluster theories.
-"""
+"""Tests about optimizations of problems from coupled-cluster theories."""
 
 import pytest
 from drudge import PartHoleDrudge
 from sympy import IndexedBase, Symbol, Rational
 
 from gristmill import (
-    optimize, verify_eval_seq, ContrStrat, get_flop_cost, RepeatedTermsStrat
+    optimize,
+    verify_eval_seq,
+    ContrStrat,
+    get_flop_cost,
+    RepeatedTermsStrat,
 )
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def parthole_drudge(spark_ctx):
     """The particle-hold drudge."""
     dr = PartHoleDrudge(spark_ctx)
@@ -30,16 +33,16 @@ def test_ccd_doubles_terms(parthole_drudge):
     a, b, c, d = p.V_dumms[:4]
     i, j, k, l = p.O_dumms[:4]
     u = dr.two_body
-    t = IndexedBase('t')
+    t = IndexedBase("t")
     dr.set_dbbar_base(t, 2)
 
-    r = IndexedBase('r')
+    r = IndexedBase("r")
     tensor = dr.define_einst(
         r[a, b, i, j],
-        + t[a, b, l, j] * t[c, d, i, k] * u[k, l, c, d]
+        +t[a, b, l, j] * t[c, d, i, k] * u[k, l, c, d]
         + t[a, d, i, j] * t[b, c, k, l] * u[k, l, c, d]
         - t[a, b, i, l] * t[c, d, k, j] * u[k, l, c, d]
-        - t[a, c, k, l] * t[b, d, i, j] * u[k, l, c, d]
+        - t[a, c, k, l] * t[b, d, i, j] * u[k, l, c, d],
     )
     targets = [tensor]
 
@@ -62,15 +65,16 @@ def test_ccsd_singles_terms(parthole_drudge):
     i, j, k = p.O_dumms[:3]
     u = dr.two_body
     f = dr.fock
-    t = IndexedBase('t')
+    t = IndexedBase("t")
     dr.set_dbbar_base(t, 2)
 
-    r = IndexedBase('r')
+    r = IndexedBase("r")
     tensor = dr.define_einst(
         r[a, i],
-        t[a, b, i, j] * u[j, k, b, c] * t[c, k] + t[a, b, i, j] * f[j, b]
+        t[a, b, i, j] * u[j, k, b, c] * t[c, k]
+        + t[a, b, i, j] * f[j, b]
         - t[a, j] * t[b, i] * f[j, b]
-        - t[a, j] * t[b, i] * t[c, k] * u[j, k, b, c]
+        - t[a, j] * t[b, i] * t[c, k] * u[j, k, b, c],
     )
     targets = [tensor]
 
@@ -94,12 +98,12 @@ def test_ccsd_energy(parthole_drudge):
     a, b = p.V_dumms[:2]
     i, j = p.O_dumms[:2]
     u = dr.two_body
-    t = IndexedBase('t')
+    t = IndexedBase("t")
 
     energy = dr.define_einst(
-        Symbol('e'),
+        Symbol("e"),
         u[i, j, a, b] * t[a, b, i, j] * Rational(1, 2)
-        + u[i, j, a, b] * t[a, i] * t[b, j]
+        + u[i, j, a, b] * t[a, i] * t[b, j],
     )
     targets = [energy]
 
@@ -134,12 +138,12 @@ def test_ccsd_doubles(parthole_drudge):
     a, b, c, d = p.V_dumms[:4]
     i, j = p.O_dumms[:2]
     u = dr.two_body
-    t = IndexedBase('t')
+    t = IndexedBase("t")
     dr.set_dbbar_base(t, 2)
 
     tensor = dr.define_einst(
-        IndexedBase('r')[a, b, i, j],
-        t[c, d, i, j] * u[a, b, c, d] + u[a, b, c, d] * t[c, i] * t[d, j]
+        IndexedBase("r")[a, b, i, j],
+        t[c, d, i, j] * u[a, b, c, d] + u[a, b, c, d] * t[c, i] * t[d, j],
     )
     targets = [tensor]
 
@@ -178,54 +182,53 @@ def test_ccsd_doubles_complex_terms(parthole_drudge):
     a, b, c, d = p.V_dumms[:4]
     i, j, k, l = p.O_dumms[:4]
     u = dr.two_body
-    t = IndexedBase('t')
+    t = IndexedBase("t")
     dr.set_dbbar_base(t, 2)
 
     tau = dr.define_einst(
-        IndexedBase('tau')[a, b, i, j],
-        Rational(1, 2) * t[a, b, i, j] + t[a, i] * t[b, j]
+        IndexedBase("tau")[a, b, i, j],
+        Rational(1, 2) * t[a, b, i, j] + t[a, i] * t[b, j],
     )
 
     a_i = dr.define_einst(
-        IndexedBase('AI')[k, l, i, j], u[i, c, k, l] * t[c, j]
+        IndexedBase("AI")[k, l, i, j], u[i, c, k, l] * t[c, j]
     )
 
     a_ = dr.define(
-        IndexedBase('A')[k, l, i, j],
-        u[k, l, i, j] +
-        a_i[k, l, i, j] - a_i[k, l, j, i]
-        + u[k, l, c, d] * tau[c, d, i, j]
+        IndexedBase("A")[k, l, i, j],
+        u[k, l, i, j]
+        + a_i[k, l, i, j]
+        - a_i[k, l, j, i]
+        + u[k, l, c, d] * tau[c, d, i, j],
     )
 
     a_term = dr.einst(a_[k, l, i, j] * tau[a, b, k, l])
 
     b_i = dr.define_einst(
-        IndexedBase('BI')[a, b, c, d], u[a, k, c, d] * t[b, k]
+        IndexedBase("BI")[a, b, c, d], u[a, k, c, d] * t[b, k]
     )
 
     b_ = dr.define_einst(
-        IndexedBase('B')[a, b, c, d],
-        u[a, b, c, d] - b_i[a, b, c, d] + b_i[b, a, c, d]
+        IndexedBase("B")[a, b, c, d],
+        u[a, b, c, d] - b_i[a, b, c, d] + b_i[b, a, c, d],
     )
 
     b_term = dr.einst(b_[a, b, c, d] * tau[c, d, i, j])
 
-    substs = {
-        p.no: 1000,
-        p.nv: 1100
-    }
+    substs = {p.no: 1000, p.nv: 1100}
 
     # Simple a term or b term should work well both with full backtrack and
     # greedily.  But repeated terms need to be ignored for full factorization.
     for term in [a_term, b_term]:
-        tensor = dr.define_einst(IndexedBase('r')[a, b, i, j], term)
+        tensor = dr.define_einst(IndexedBase("r")[a, b, i, j], term)
         targets = [tensor]
         for drop_cutoff in [-1, 2]:
             eval_seq = optimize(
-                targets, substs=substs,
+                targets,
+                substs=substs,
                 contr_strat=ContrStrat.EXHAUST,
                 repeated_terms_strat=RepeatedTermsStrat.IGNORE,
-                drop_cutoff=drop_cutoff
+                drop_cutoff=drop_cutoff,
             )
             assert verify_eval_seq(eval_seq, targets)
             # Here we just assert that the final step is a simple product.
@@ -244,25 +247,29 @@ def test_ccsd_pij_term(parthole_drudge):
     a, b, c, d = p.V_dumms[:4]
     i, j, k, l = p.O_dumms[:4]
     u = dr.two_body
-    t = IndexedBase('t')
+    t = IndexedBase("t")
     dr.set_dbbar_base(t, 2)
 
-    r = IndexedBase('r')
-    f = IndexedBase('f')
+    r = IndexedBase("r")
+    f = IndexedBase("f")
 
-    targets = [dr.define_einst(
-        r[a, b, i, j],
-        - 2 * t[c, l] * t[b, a, k, i] * u[k, l, c, j]
-        + 2 * f[k, i] * t[a, b, k, j]
-        - 2 * t[c, i] * u[a, b, c, j]
-        + t[b, a, k, i] * t[c, d, j, l] * u[k, l, c, d]
-        - 2 * t[c, l] * t[d, j] * t[b, a, k, i] * u[k, l, c, d]
-        + 2 * f[k, c] * t[c, j] * t[b, a, k, i]
-    )]
+    targets = [
+        dr.define_einst(
+            r[a, b, i, j],
+            -2 * t[c, l] * t[b, a, k, i] * u[k, l, c, j]
+            + 2 * f[k, i] * t[a, b, k, j]
+            - 2 * t[c, i] * u[a, b, c, j]
+            + t[b, a, k, i] * t[c, d, j, l] * u[k, l, c, d]
+            - 2 * t[c, l] * t[d, j] * t[b, a, k, i] * u[k, l, c, d]
+            + 2 * f[k, c] * t[c, j] * t[b, a, k, i],
+        )
+    ]
 
     drop_cutoff = -1
     eval_seq = optimize(
-        targets, substs={p.nv: p.no * 1.1},
-        contr_strat=ContrStrat.EXHAUST, drop_cutoff=drop_cutoff
+        targets,
+        substs={p.nv: p.no * 1.1},
+        contr_strat=ContrStrat.EXHAUST,
+        drop_cutoff=drop_cutoff,
     )
     verify_eval_seq(eval_seq, targets)

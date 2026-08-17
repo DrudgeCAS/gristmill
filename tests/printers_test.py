@@ -1,31 +1,44 @@
-"""Tests for the base printer.
-"""
+"""Tests for the base printer."""
 
 import subprocess
 from unittest.mock import patch
 
 import pytest
-from sympy import Symbol, IndexedBase, symbols, Float
+
+# Float looks unused, but the tests below eval printed numerators, and those
+# strings name it.
+from sympy import Symbol, IndexedBase, symbols, Float  # noqa: F401
 from sympy.printing.python import PythonPrinter
 
 from drudge import Drudge, Range
-from gristmill import BasePrinter, CPrinter, FortranPrinter, EinsumPrinter, OMEinsumPrinter, mangle_base
+from gristmill import (
+    BasePrinter,
+    CPrinter,
+    FortranPrinter,
+    EinsumPrinter,
+    OMEinsumPrinter,
+    mangle_base,
+)
 from gristmill.generate import (
-    TensorDecl, BeginBody, BeforeComp, CompTerm, OutOfUse, EndBody
+    TensorDecl,
+    BeginBody,
+    BeforeComp,
+    CompTerm,
+    OutOfUse,
+    EndBody,
 )
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def simple_drudge(spark_ctx):
-    """Form a simple drudge with some basic information.
-    """
+    """Form a simple drudge with some basic information."""
 
     dr = Drudge(spark_ctx)
 
-    n = Symbol('n')
-    r = Range('R', 0, n)
+    n = Symbol("n")
+    r = Range("R", 0, n)
 
-    dumms = symbols('a b c d e f g')
+    dumms = symbols("a b c d e f g")
     dr.set_dumms(r, dumms)
     dr.add_resolver_for_dumms()
 
@@ -34,26 +47,28 @@ def simple_drudge(spark_ctx):
 
 @pytest.fixture
 def colourful_tensor(simple_drudge):
-    """Form a colourful tensor definition capable of large code coverage.
-    """
+    """Form a colourful tensor definition capable of large code coverage."""
 
     dr = simple_drudge
     p = dr.names
 
-    x = IndexedBase('x')
-    u = IndexedBase('u')
-    v = IndexedBase('v')
+    x = IndexedBase("x")
+    u = IndexedBase("u")
+    v = IndexedBase("v")
     dr.set_name(x, u, v)
 
-    r, s = symbols('r s')
+    r, s = symbols("r s")
     dr.set_name(r, s)
 
     a, b, c = p.R_dumms[:3]
 
-    tensor = dr.define(x[a, b], (
-            ((2 * r) / (3 * s)) * (u[b, a]) ** 2 -
-            dr.sum((c, p.R), u[a, c] * v[c, b] * c ** 2 / 2)
-    ))
+    tensor = dr.define(
+        x[a, b],
+        (
+            ((2 * r) / (3 * s)) * (u[b, a]) ** 2
+            - dr.sum((c, p.R), u[a, c] * v[c, b] * c**2 / 2)
+        ),
+    )
 
     return tensor
 
@@ -77,13 +92,13 @@ def eval_seq_deps(simple_drudge):
     p = dr.names
     a, b, c = p.a, p.b, p.c
 
-    x = IndexedBase('X')
-    y = IndexedBase('Y')
-    i1 = IndexedBase('I1')
-    i2 = IndexedBase('I2')
-    i3 = Symbol('I3')
-    r1 = IndexedBase('R1')
-    r2 = IndexedBase('R2')
+    x = IndexedBase("X")
+    y = IndexedBase("Y")
+    i1 = IndexedBase("I1")
+    i2 = IndexedBase("I2")
+    i3 = Symbol("I3")
+    r1 = IndexedBase("R1")
+    r2 = IndexedBase("R2")
 
     i1_def = dr.define_einst(i1[a, b], x[a, c] * y[c, b])
     i1_def.if_interm = True
@@ -107,22 +122,23 @@ def test_base_printer_ctx(simple_drudge, colourful_tensor):
     tensor = colourful_tensor
 
     # Process indexed names by mangling the base name.
-    with patch.object(BasePrinter, '__abstractmethods__', frozenset()):
-        printer = BasePrinter(PythonPrinter(), mangle_base(
-            lambda base, indices: base + str(len(indices))
-        ))
+    with patch.object(BasePrinter, "__abstractmethods__", frozenset()):
+        printer = BasePrinter(
+            PythonPrinter(),
+            mangle_base(lambda base, indices: base + str(len(indices))),
+        )
     ctx = printer.transl(tensor)
 
     def check_range(ctx, index):
         """Check the range information in a context for a index."""
         assert ctx.index == index
         assert ctx.range == p.R
-        assert ctx.lower == '0'
-        assert ctx.upper == 'n'
-        assert ctx.size == 'n'
+        assert ctx.lower == "0"
+        assert ctx.upper == "n"
+        assert ctx.size == "n"
 
-    assert ctx.base == 'x2'
-    for i, j in zip(ctx.indices, ['a', 'b']):
+    assert ctx.base == "x2"
+    for i, j in zip(ctx.indices, ["a", "b"]):
         check_range(i, j)
         continue
 
@@ -131,34 +147,33 @@ def test_base_printer_ctx(simple_drudge, colourful_tensor):
         if len(term.sums) == 0:
             # The transpose term.
 
-            assert term.phase == '+'
-            r = Symbol('r')
-            assert float(eval(term.numerator) / r) == 2/3
-            assert term.denominator == 's'
+            assert term.phase == "+"
+            r = Symbol("r")
+            assert float(eval(term.numerator) / r) == 2 / 3
+            assert term.denominator == "s"
 
             assert len(term.indexed_factors) == 1
             factor = term.indexed_factors[0]
-            assert factor.base == 'u2**2'
-            for i, j in zip(factor.indices, ['b', 'a']):
+            assert factor.base == "u2**2"
+            for i, j in zip(factor.indices, ["b", "a"]):
                 check_range(i, j)
                 continue
 
             assert len(term.other_factors) == 0
 
         elif len(term.sums) == 1:
+            check_range(term.sums[0], "c")
 
-            check_range(term.sums[0], 'c')
-
-            assert term.phase == '-'
+            assert term.phase == "-"
             assert float(eval(term.numerator)) == 0.5
-            assert term.denominator == '1'
+            assert term.denominator == "1"
 
             assert len(term.indexed_factors) == 2
             for factor in term.indexed_factors:
-                if factor.base == 'u2':
-                    expected = ['a', 'c']
-                elif factor.base == 'v2':
-                    expected = ['c', 'b']
+                if factor.base == "u2":
+                    expected = ["a", "c"]
+                elif factor.base == "v2":
+                    expected = ["c", "b"]
                 else:
                     assert False
                 for i, j in zip(factor.indices, expected):
@@ -167,7 +182,7 @@ def test_base_printer_ctx(simple_drudge, colourful_tensor):
                 continue
 
             assert len(term.other_factors) == 1
-            assert term.other_factors[0] == 'c**2'
+            assert term.other_factors[0] == "c**2"
 
         else:
             assert False
@@ -177,15 +192,15 @@ def test_events_generation(eval_seq_deps):
     """Test the event generation facility in the base printer."""
     eval_seq = eval_seq_deps
 
-    with patch.object(BasePrinter, '__abstractmethods__', frozenset()):
+    with patch.object(BasePrinter, "__abstractmethods__", frozenset()):
         printer = BasePrinter(PythonPrinter())
     events = printer.form_events(eval_seq)
 
-    i1 = IndexedBase('I1')
-    i2 = IndexedBase('I2')
-    i3 = Symbol('I3')
-    r1 = IndexedBase('R1')
-    r2 = IndexedBase('R2')
+    i1 = IndexedBase("I1")
+    i2 = IndexedBase("I2")
+    i3 = Symbol("I3")
+    r1 = IndexedBase("R1")
+    r2 = IndexedBase("R2")
 
     events.reverse()  # For easy popping from front.
 
@@ -282,11 +297,11 @@ def _test_fortran_code(code, dir):
 
     orig_cwd = dir.chdir()
 
-    dir.join('test.f90').write(code)
-    stat = subprocess.run(['gfortran', '-o', 'test', '-fopenmp', 'test.f90'])
+    dir.join("test.f90").write(code)
+    stat = subprocess.run(["gfortran", "-o", "test", "-fopenmp", "test.f90"])
     assert stat.returncode == 0
-    stat = subprocess.run(['./test'], stdout=subprocess.PIPE)
-    assert stat.stdout.decode().strip() == 'OK'
+    stat = subprocess.run(["./test"], stdout=subprocess.PIPE)
+    assert stat.stdout.decode().strip() == "OK"
 
     orig_cwd.chdir()
     return True
@@ -300,11 +315,11 @@ def _test_c_code(code, dir):
 
     orig_cwd = dir.chdir()
 
-    dir.join('test.c').write(code)
-    stat = subprocess.run(['gcc', '-o', 'test', 'test.c', '-lm'])
+    dir.join("test.c").write(code)
+    stat = subprocess.run(["gcc", "-o", "test", "test.c", "-lm"])
     assert stat.returncode == 0
-    stat = subprocess.run(['./test'], stdout=subprocess.PIPE)
-    assert stat.stdout.decode().strip() == 'OK'
+    stat = subprocess.run(["./test"], stdout=subprocess.PIPE)
+    assert stat.stdout.decode().strip() == "OK"
 
     orig_cwd.chdir()
     return True
@@ -374,7 +389,7 @@ def test_full_fortran_printer(eval_seq_deps, tmpdir):
 
     sep_code = printer.doprint(eval_seq, separate_decls=True)
     assert len(sep_code) == 2
-    assert evals == '\n'.join(sep_code)
+    assert evals == "\n".join(sep_code)
 
 
 _FORTRAN_FULL_TEST_CODE = """
@@ -560,7 +575,7 @@ def test_full_c_printer(eval_seq_deps, tmpdir):
 
     sep_code = printer.doprint(eval_seq, separate_decls=True)
     assert len(sep_code) == 2
-    assert evals == '\n'.join(sep_code)
+    assert evals == "\n".join(sep_code)
 
 
 _C_FULL_TEST_CODE = """
@@ -665,20 +680,17 @@ int main() {{
 
 
 def test_einsum_printer(simple_drudge):
-    """Test the basic functionality of the einsum printer.
-    """
+    """Test the basic functionality of the einsum printer."""
 
     dr = simple_drudge
     p = dr.names
     a, b, c = p.R_dumms[:3]
 
-    x = IndexedBase('x')
-    u = IndexedBase('u')
-    v = IndexedBase('v')
+    x = IndexedBase("x")
+    u = IndexedBase("u")
+    v = IndexedBase("v")
 
-    tensor = dr.define_einst(
-        x[a, b], u[b, a] ** 2 - 2 * u[a, c] * v[c, b] / 3
-    )
+    tensor = dr.define_einst(x[a, b], u[b, a] ** 2 - 2 * u[a, c] * v[c, b] / 3)
 
     printer = EinsumPrinter(base_indent=0)
     code = printer.doprint([tensor])
@@ -686,7 +698,7 @@ def test_einsum_printer(simple_drudge):
     exec_code = _EINSUM_DRIVER_CODE.format(code=code)
     env = {}
     exec(exec_code, env, {})
-    assert env['diff'] < 1.0E-5  # Arbitrary delta.
+    assert env["diff"] < 1.0e-5  # Arbitrary delta.
 
 
 _EINSUM_DRIVER_CODE = """
@@ -707,16 +719,15 @@ diff = linalg.norm(x - expected)
 
 
 def test_full_einsum_printer(eval_seq_deps):
-    """Test the full functionality of the einsum printer.
-    """
+    """Test the full functionality of the einsum printer."""
     eval_seq = eval_seq_deps
     printer = EinsumPrinter(base_indent=0)
     code = printer.doprint(eval_seq)
     exec_code = _FULL_EINSUM_DRIVER_CODE.format(eval=code)
     env = {}
     exec(exec_code, env, {})
-    assert env['diff1'] < 1.0E-5
-    assert env['diff2'] < 1.0E-5
+    assert env["diff1"] < 1.0e-5
+    assert env["diff2"] < 1.0e-5
 
 
 _FULL_EINSUM_DRIVER_CODE = """
@@ -750,17 +761,17 @@ def _test_julia_code(code, dir):
 
     Returns the result value from Julia, or None if juliacall is not available.
     """
-    
+
     # Check if juliacall is available
     try:
         from juliacall import Main as jl
     except ImportError:
         return None
-    
+
     try:
         # Execute the test code
         jl.seval(code)
-        
+
         # Return the result
         return jl
     except Exception as e:
@@ -769,32 +780,29 @@ def _test_julia_code(code, dir):
 
 
 def test_omeinsum_printer(simple_drudge, tmpdir):
-    """Test the basic functionality of the OMEinsum printer.
-    """
-    
+    """Test the basic functionality of the OMEinsum printer."""
+
     dr = simple_drudge
     p = dr.names
     a, b, c = p.R_dumms[:3]
 
-    x = IndexedBase('x')
-    u = IndexedBase('u')
-    v = IndexedBase('v')
+    x = IndexedBase("x")
+    u = IndexedBase("u")
+    v = IndexedBase("v")
 
-    tensor = dr.define_einst(
-        x[a, b], u[b, a] ** 2 - 2 * u[a, c] * v[c, b] / 3
-    )
+    tensor = dr.define_einst(x[a, b], u[b, a] ** 2 - 2 * u[a, c] * v[c, b] / 3)
 
     printer = OMEinsumPrinter()
     code = printer.doprint([tensor])
 
     julia_test_code = _OMEINSUM_DRIVER_CODE.format(code=code)
-    
+
     jl = _test_julia_code(julia_test_code, tmpdir)
     if jl is None:
         pytest.skip("Julia or OMEinsum.jl not available")
-    
+
     diff = float(jl.diff)
-    assert diff < 1.0E-5  # Arbitrary delta.
+    assert diff < 1.0e-5  # Arbitrary delta.
 
 
 _OMEINSUM_DRIVER_CODE = """
@@ -810,22 +818,21 @@ diff = maximum(abs.(x .- expected))
 
 
 def test_full_omeinsum_printer(eval_seq_deps, tmpdir):
-    """Test the full functionality of the OMEinsum printer.
-    """
+    """Test the full functionality of the OMEinsum printer."""
     eval_seq = eval_seq_deps
     printer = OMEinsumPrinter()
     code = printer.doprint(eval_seq)
-    
+
     julia_test_code = _FULL_OMEINSUM_DRIVER_CODE.format(eval=code)
-    
+
     jl = _test_julia_code(julia_test_code, tmpdir)
     if jl is None:
         pytest.skip("Julia or OMEinsum.jl not available")
-    
+
     diff1 = float(jl.diff1)
     diff2 = float(jl.diff2)
-    assert diff1 < 1.0E-5
-    assert diff2 < 1.0E-5
+    assert diff1 < 1.0e-5
+    assert diff2 < 1.0e-5
 
 
 _FULL_OMEINSUM_DRIVER_CODE = """

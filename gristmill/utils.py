@@ -6,9 +6,7 @@ import re
 import typing
 
 import numpy as np
-from jinja2 import (
-    Environment, PackageLoader, ChoiceLoader, DictLoader
-)
+from jinja2 import Environment, PackageLoader, ChoiceLoader, DictLoader
 from numpy.polynomial import Polynomial
 from sympy import Symbol, Integer, Mul, poly_from_expr, Number, Poly, Expr
 
@@ -21,6 +19,7 @@ from drudge import prod_, TensorDef, Range
 #
 # Numeric cost manipulation during optimization.
 #
+
 
 class SVPoly(Polynomial):
     """Single variate polynomials for sizes and costs.
@@ -72,7 +71,7 @@ class SVPoly(Polynomial):
         """Test if a cost is a positive/negative one."""
 
         coeff = self.coef
-        inf_idxes, = np.where(np.isinf(coeff))
+        (inf_idxes,) = np.where(np.isinf(coeff))
         if inf_idxes.size == 0:
             idx = -1
         else:
@@ -103,8 +102,9 @@ def form_size(expr: Expr) -> typing.Tuple[Size, typing.Optional[Symbol]]:
         coeff_exprs.reverse()
     else:
         raise ValueError(
-            'Invalid expression', expr,
-            'expecting single variate polynomial (or number)'
+            "Invalid expression",
+            expr,
+            "expecting single variate polynomial (or number)",
         )
 
     if all(i.is_integer for i in coeff_exprs):
@@ -145,8 +145,7 @@ def get_total_size(sums) -> Size:
         curr = i.size
         if curr is None:
             raise ValueError(
-                'Invalid range for optimization', i,
-                'expecting a bound range.'
+                "Invalid range for optimization", i, "expecting a bound range."
             )
         size *= curr
         continue
@@ -162,9 +161,7 @@ class SizedRange(Range):
     faster equality and hashing.
     """
 
-    __slots__ = [
-        '_size'
-    ]
+    __slots__ = ["_size"]
 
     def __init__(self, label, size):
         """Initialize the sized range object."""
@@ -190,9 +187,9 @@ class SizedRange(Range):
         return (self._size, self._label)
 
 
-def form_sized_range(range_: Range, substs) -> typing.Tuple[
-    SizedRange, typing.Optional[Symbol]
-]:
+def form_sized_range(
+    range_: Range, substs
+) -> typing.Tuple[SizedRange, typing.Optional[Symbol]]:
     """Form a sized range from the original raw range.
 
     The when a symbol exists in the ranges, it will be returned as the second
@@ -201,13 +198,11 @@ def form_sized_range(range_: Range, substs) -> typing.Tuple[
 
     if not range_.bounded:
         raise ValueError(
-            'Invalid range for optimization', range_,
-            'expecting explicit bound'
+            "Invalid range for optimization",
+            range_,
+            "expecting explicit bound",
         )
-    lower, upper = [
-        i.xreplace(substs)
-        for i in [range_.lower, range_.upper]
-    ]
+    lower, upper = [i.xreplace(substs) for i in [range_.lower, range_.upper]]
     size_expr = upper - lower
 
     size, symb = form_size(size_expr)
@@ -241,8 +236,7 @@ class Tuple4Cmp(tuple):
 
 
 def get_flop_cost(
-        eval_seq: typing.Iterable[TensorDef], leading=False,
-        ignore_consts=True
+    eval_seq: typing.Iterable[TensorDef], leading=False, ignore_consts=True
 ):
     """Get the FLOP cost for the given evaluation sequence.
 
@@ -325,7 +319,7 @@ def _get_leading(cost):
 
     leading_deg = max(sum(i) for i, _ in terms)
     leading_cost = sum(
-        coeff * prod_(i ** j for i, j in zip(symbs, degs))
+        coeff * prod_(i**j for i, j in zip(symbs, degs))
         for degs, coeff in terms
         if sum(degs) == leading_deg
     )
@@ -337,6 +331,7 @@ def _get_leading(cost):
 # Disjoint set forest
 # -------------------
 #
+
 
 class DSF(object):
     """
@@ -378,7 +373,6 @@ class DSF(object):
 
         represent = None  # The set that other sets will be unioned to.
         for i in contents:
-
             if represent is None:
                 represent = i
             else:
@@ -394,8 +388,7 @@ class DSF(object):
 
     @property
     def n_sets(self):
-        """The number of sets in the forest.
-        """
+        """The number of sets in the forest."""
         return self._n_sets
 
     def union_two(self, idx1, idx2):
@@ -484,19 +477,28 @@ class JinjaEnv(Environment):
     """
 
     def __init__(
-            self, indent=' ' * 4, breakable_regex=None, max_width=80,
-            line_cont='', cont_indent=1, add_filters=None, add_globals=None,
-            add_tests=None, add_templ=None
+        self,
+        indent=" " * 4,
+        breakable_regex=None,
+        max_width=80,
+        line_cont="",
+        cont_indent=1,
+        add_filters=None,
+        add_globals=None,
+        add_tests=None,
+        add_templ=None,
     ):
         """Initialize the Jinja environment."""
 
         # Set the Jinja environment up.
         super().__init__(
-            trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True,
+            trim_blocks=True,
+            lstrip_blocks=True,
+            keep_trailing_newline=True,
             loader=ChoiceLoader(
-                [PackageLoader('gristmill')] +
-                ([DictLoader(add_templ)] if add_templ is not None else [])
-            )
+                [PackageLoader("gristmill")]
+                + ([DictLoader(add_templ)] if add_templ is not None else [])
+            ),
         )
 
         self._indent = indent
@@ -506,14 +508,14 @@ class JinjaEnv(Environment):
         self._cont_indent = cont_indent
 
         # Add the default filters and tests for all printers.
-        self.globals['indent'] = indent
-        self.globals['line_cont'] = line_cont
-        self.globals['cont_indent'] = cont_indent
+        self.globals["indent"] = indent
+        self.globals["line_cont"] = line_cont
+        self.globals["cont_indent"] = cont_indent
 
-        self.filters['form_indent'] = self.form_indent
-        self.filters['wrap_line'] = self.wrap_line
+        self.filters["form_indent"] = self.form_indent
+        self.filters["wrap_line"] = self.wrap_line
 
-        self.tests['non_empty'] = self.non_empty
+        self.tests["non_empty"] = self.non_empty
 
         # Add the additional globals, filters, and tests.
         if add_globals is not None:
@@ -574,9 +576,9 @@ class JinjaEnv(Environment):
         for idx, token in enumerate(tokens):
             new_len = curr_len + len(token)
             if_add = (
-                    len(curr_line) == 0
-                    or (idx + 1 == n_tokens and new_len <= max_width)
-                    or new_len + len(line_cont) <= max_width
+                len(curr_line) == 0
+                or (idx + 1 == n_tokens and new_len <= max_width)
+                or new_len + len(line_cont) <= max_width
             )
             if if_add:
                 curr_line.append(token)
@@ -584,16 +586,16 @@ class JinjaEnv(Environment):
             else:
                 # When the current line is already filled up.
                 curr_line.append(line_cont)
-                lines.append(''.join(curr_line))
+                lines.append("".join(curr_line))
                 curr_line = [cont_indent]
                 curr_len = len(cont_indent)
             # Go on to the next token.
             continue
 
         # We need to add the trailing current line after all the loop.
-        lines.append(''.join(curr_line))
+        lines.append("".join(curr_line))
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def non_empty(sequence):
@@ -607,6 +609,4 @@ class JinjaEnv(Environment):
         """
 
         indent = self.form_indent(level)
-        return '\n'.join(
-            indent + i for i in lines.splitlines()
-        ) + '\n'
+        return "\n".join(indent + i for i in lines.splitlines()) + "\n"
