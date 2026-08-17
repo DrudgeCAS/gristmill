@@ -47,3 +47,8 @@ dev = ["pytest", "juliacall>=0.9.20"]
 
 [project.urls]
 Homepage = "https://github.com/DrudgeCAS/gristmill"
+
+[dependency-groups]
+dev = [
+  "ruff>=0.16.2",
+]
