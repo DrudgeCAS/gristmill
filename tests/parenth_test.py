@@ -10,8 +10,8 @@ import pytest
 from gristmill._parenth import parenth
 
 
-@pytest.mark.parametrize('mode', [0, 1, 2])
-@pytest.mark.parametrize('if_incl', [False, True])
+@pytest.mark.parametrize("mode", [0, 1, 2])
+@pytest.mark.parametrize("if_incl", [False, True])
 def test_factor_without_indices(mode, if_incl):
     """A single factor with no index at all gives the trivial memoir.
 

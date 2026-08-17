@@ -1,5 +1,4 @@
-"""Test optimization of different special kinds of tensor computations.
-"""
+"""Test optimization of different special kinds of tensor computations."""
 
 import pytest
 from drudge import Drudge, Range, TensorDef
@@ -8,7 +7,7 @@ from sympy import symbols, Symbol, IndexedBase, conjugate
 from gristmill import optimize, verify_eval_seq, get_flop_cost, ContrStrat
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def simple_drudge(spark_ctx):
     """Make simple drudge.
 
@@ -17,9 +16,9 @@ def simple_drudge(spark_ctx):
 
     dr = Drudge(spark_ctx)
 
-    n = symbols('n')
-    r = Range('r', 0, n)
-    dumms = symbols('a b c d e f g h')
+    n = symbols("n")
+    r = Range("r", 0, n)
+    dumms = symbols("a b c d e f g h")
     dr.set_dumms(r, dumms)
     dr.add_default_resolver(r)
 
@@ -45,8 +44,8 @@ def test_summation_shared_by_four_factors(simple_drudge):
     dr = simple_drudge
     a = dr.ds[0]
 
-    x, y, z, w = (IndexedBase(i) for i in ['x', 'y', 'z', 'w'])
-    targets = [dr.define_einst(Symbol('s'), x[a] * y[a] * z[a] * w[a])]
+    x, y, z, w = (IndexedBase(i) for i in ["x", "y", "z", "w"])
+    targets = [dr.define_einst(Symbol("s"), x[a] * y[a] * z[a] * w[a])]
 
     costs = []
     for strat in ContrStrat:
@@ -73,16 +72,17 @@ def test_constriction_over_an_outer_product(simple_drudge):
     n = dr.n
     a, b = dr.ds[:2]
 
-    A, X = IndexedBase('A'), IndexedBase('X')
-    y, z = IndexedBase('y'), IndexedBase('z')
+    A, X = IndexedBase("A"), IndexedBase("X")
+    y, z = IndexedBase("y"), IndexedBase("z")
 
-    targets = [dr.define_einst(
-        Symbol('e'), A[a, b] * X[a, b] + A[a, b] * y[a] * z[b])]
+    targets = [
+        dr.define_einst(Symbol("e"), A[a, b] * X[a, b] + A[a, b] * y[a] * z[b])
+    ]
 
     eval_seq = optimize(targets)
 
     assert verify_eval_seq(eval_seq, targets)
-    assert get_flop_cost(eval_seq) == 4 * n ** 2
+    assert get_flop_cost(eval_seq) == 4 * n**2
 
 
 def test_constriction_over_three_terms(simple_drudge):
@@ -100,19 +100,22 @@ def test_constriction_over_three_terms(simple_drudge):
     n = dr.n
     a, b = dr.ds[:2]
 
-    X = IndexedBase('X')
-    y, z, u = (IndexedBase(i) for i in ['y', 'z', 'u'])
+    X = IndexedBase("X")
+    y, z, u = (IndexedBase(i) for i in ["y", "z", "u"])
 
-    targets = [dr.define_einst(
-        Symbol('e'),
-        X[a, b] * z[a] * y[b]
-        + 2 * X[a, b] * y[a] * y[b]
-        - X[a, b] * u[a] * y[b])]
+    targets = [
+        dr.define_einst(
+            Symbol("e"),
+            X[a, b] * z[a] * y[b]
+            + 2 * X[a, b] * y[a] * y[b]
+            - X[a, b] * u[a] * y[b],
+        )
+    ]
 
     eval_seq = optimize(targets)
 
     assert verify_eval_seq(eval_seq, targets)
-    assert get_flop_cost(eval_seq) == 2 * n ** 2 + 4 * n
+    assert get_flop_cost(eval_seq) == 2 * n**2 + 4 * n
 
 
 def test_constriction_search_is_not_pruned_unsoundly(simple_drudge):
@@ -132,19 +135,22 @@ def test_constriction_search_is_not_pruned_unsoundly(simple_drudge):
     n = dr.n
     a, b = dr.ds[:2]
 
-    P = IndexedBase('P')
-    z, u, w = (IndexedBase(i) for i in ['z', 'u', 'w'])
+    P = IndexedBase("P")
+    z, u, w = (IndexedBase(i) for i in ["z", "u", "w"])
 
-    targets = [dr.define_einst(
-        Symbol('res'),
-        -P[a, b] * z[a] * u[b]
-        + P[a, b] * u[a] * w[b]
-        + 3 * P[a, b] * w[a] * u[b])]
+    targets = [
+        dr.define_einst(
+            Symbol("res"),
+            -P[a, b] * z[a] * u[b]
+            + P[a, b] * u[a] * w[b]
+            + 3 * P[a, b] * w[a] * u[b],
+        )
+    ]
 
     eval_seq = optimize(targets)
 
     assert verify_eval_seq(eval_seq, targets)
-    assert get_flop_cost(eval_seq) == 4 * n ** 2 + 4 * n
+    assert get_flop_cost(eval_seq) == 4 * n**2 + 4 * n
 
 
 def test_sum_with_an_index_free_product(simple_drudge):
@@ -159,18 +165,21 @@ def test_sum_with_an_index_free_product(simple_drudge):
     dr = simple_drudge
     a, b, c = dr.ds[:3]
 
-    q_mat, v = IndexedBase('Q'), IndexedBase('V')
-    q, s = IndexedBase('q'), IndexedBase('s')
-    targets = [dr.define_einst(
-        Symbol('res'),
-        q_mat[a, b] * q[a] * s[b]
-        + 2 * q_mat[a, b] * q_mat[a, b]
-        - q_mat[a, b] * v[a, c] * v[c, b]
-    )]
+    q_mat, v = IndexedBase("Q"), IndexedBase("V")
+    q, s = IndexedBase("q"), IndexedBase("s")
+    targets = [
+        dr.define_einst(
+            Symbol("res"),
+            q_mat[a, b] * q[a] * s[b]
+            + 2 * q_mat[a, b] * q_mat[a, b]
+            - q_mat[a, b] * v[a, c] * v[c, b],
+        )
+    ]
 
     for strat in ContrStrat:
         eval_seq = optimize(targets, contr_strat=strat)
         assert verify_eval_seq(eval_seq, targets)
+
 
 def test_simple_scalar_optimization(spark_ctx):
     """Test optimization of a simple scalar.
@@ -181,28 +190,30 @@ def test_simple_scalar_optimization(spark_ctx):
 
     dr = Drudge(spark_ctx)
 
-    a, b, r = symbols('a b r')
+    a, b, r = symbols("a b r")
     targets = [dr.define(r, a * b)]
     eval_seq = optimize(targets)
     assert verify_eval_seq(eval_seq, targets)
 
 
 def test_conjugation_optimization(simple_drudge):
-    """Test optimization of expressions containing complex conjugate.
-    """
+    """Test optimization of expressions containing complex conjugate."""
 
     dr = simple_drudge
 
     a, b, c, d = dr.ds[:4]
 
-    p = IndexedBase('p')
-    x = IndexedBase('x')
-    y = IndexedBase('y')
-    z = IndexedBase('z')
+    p = IndexedBase("p")
+    x = IndexedBase("x")
+    y = IndexedBase("y")
+    z = IndexedBase("z")
 
-    targets = [dr.define_einst(
-        p[a, b], x[a, c] * conjugate(y[c, b]) + x[a, c] * conjugate(z[c, b])
-    )]
+    targets = [
+        dr.define_einst(
+            p[a, b],
+            x[a, c] * conjugate(y[c, b]) + x[a, c] * conjugate(z[c, b]),
+        )
+    ]
     eval_seq = optimize(targets)
     assert verify_eval_seq(eval_seq, targets)
 
@@ -218,13 +229,13 @@ def test_optimization_handles_coeffcients(simple_drudge):
 
     a, b = dr.ds[:2]
 
-    r = IndexedBase('r')
-    eps = IndexedBase('epsilon')
-    t = IndexedBase('t')
+    r = IndexedBase("r")
+    eps = IndexedBase("epsilon")
+    t = IndexedBase("t")
 
-    targets = [dr.define(r[a, b], dr.sum(
-        2 * eps[a] * t[a, b]
-    ) - 2 * eps[b] * t[a, b])]
+    targets = [
+        dr.define(r[a, b], dr.sum(2 * eps[a] * t[a, b]) - 2 * eps[b] * t[a, b])
+    ]
     eval_seq = optimize(targets)
     assert verify_eval_seq(eval_seq, targets)
 
@@ -241,16 +252,20 @@ def test_optimization_handles_scalar_intermediates(simple_drudge):
     r = dr.r
     a, b, c = dr.ds[:3]
 
-    u = IndexedBase('u')
-    eps = IndexedBase('epsilon')
-    t = IndexedBase('t')
-    s = IndexedBase('s')
+    u = IndexedBase("u")
+    eps = IndexedBase("epsilon")
+    t = IndexedBase("t")
+    s = IndexedBase("s")
 
-    targets = [dr.define(
-        u, (a, r), (b, r),
-        dr.sum((c, r), 8 * s[a, b] * eps[c] * t[a])
-        - 8 * s[a, b] * eps[a] * t[a]
-    )]
+    targets = [
+        dr.define(
+            u,
+            (a, r),
+            (b, r),
+            dr.sum((c, r), 8 * s[a, b] * eps[c] * t[a])
+            - 8 * s[a, b] * eps[a] * t[a],
+        )
+    ]
     eval_seq = optimize(targets)
     assert verify_eval_seq(eval_seq, targets)
 
@@ -266,34 +281,41 @@ def test_optimization_handles_nonlinear_factors(simple_drudge):
     r = dr.r
     a, b, c, d = dr.ds[:4]
 
-    u = symbols('u')
-    s = IndexedBase('s')
+    u = symbols("u")
+    s = IndexedBase("s")
 
-    targets = [dr.define(u, dr.sum(
-        (a, r), (b, r), (c, r), (d, r),
-        32 * s[a, c] ** 2 * s[b, d] ** 2 +
-        32 * s[a, c] * s[a, d] * s[b, c] * s[b, d]
-    ))]
+    targets = [
+        dr.define(
+            u,
+            dr.sum(
+                (a, r),
+                (b, r),
+                (c, r),
+                (d, r),
+                32 * s[a, c] ** 2 * s[b, d] ** 2
+                + 32 * s[a, c] * s[a, d] * s[b, c] * s[b, d],
+            ),
+        )
+    ]
     eval_seq = optimize(targets)
     assert verify_eval_seq(eval_seq, targets)
 
 
 def test_common_summation_intermediate_recognition(simple_drudge):
-    """Test recognition of summation intermediate differing only in a scalar.
-    """
+    """Test recognition of summation intermediate differing only in a scalar."""
 
     dr = simple_drudge
 
     a, b, c = dr.ds[:3]
 
-    x = IndexedBase('x')
-    y = IndexedBase('y')
-    p = IndexedBase('p')
-    q = IndexedBase('q')
-    r = IndexedBase('r')
-    s = IndexedBase('s')
+    x = IndexedBase("x")
+    y = IndexedBase("y")
+    p = IndexedBase("p")
+    q = IndexedBase("q")
+    r = IndexedBase("r")
+    s = IndexedBase("s")
 
-    alpha = symbols('alpha')
+    alpha = symbols("alpha")
 
     for c1, c2, c3, c4 in [
         (1, 1, 1, 1),
@@ -301,17 +323,15 @@ def test_common_summation_intermediate_recognition(simple_drudge):
         (1, 1, -1, -1),
         (1, -2, -1, 2),
         (1, -1, -1, 1),
-        (1, -alpha, 2, -2 * alpha)
+        (1, -alpha, 2, -2 * alpha),
     ]:
         targets = [
             dr.define_einst(
-                r[a, b],
-                c1 * p[a, c] * x[c, b] + c2 * p[a, c] * y[c, b]
+                r[a, b], c1 * p[a, c] * x[c, b] + c2 * p[a, c] * y[c, b]
             ),
             dr.define_einst(
-                s[a, b],
-                c3 * q[a, c] * x[c, b] + c4 * q[a, c] * y[c, b]
-            )
+                s[a, b], c3 * q[a, c] * x[c, b] + c4 * q[a, c] * y[c, b]
+            ),
         ]
 
         eval_seq = optimize(targets)
@@ -328,60 +348,58 @@ def test_removal_of_shallow_interms(simple_drudge):
     r = dr.r
     a, b, c, d = dr.ds[:4]
 
-    x = IndexedBase('x')
-    y = IndexedBase('y')
-    z = IndexedBase('z')
-    u = IndexedBase('u')
+    x = IndexedBase("x")
+    y = IndexedBase("y")
+    z = IndexedBase("z")
+    u = IndexedBase("u")
 
     targets = [
         dr.define(
-            u, (a, r), (b, r), (c, r),
-            dr.sum((d, r), x[a, d] * y[b, d] * z[c, d])
+            u,
+            (a, r),
+            (b, r),
+            (c, r),
+            dr.sum((d, r), x[a, d] * y[b, d] * z[c, d]),
         )
     ]
 
     for i in [True, False]:
         eval_seq = optimize(targets, remove_shallow=i)
         verify_eval_seq(eval_seq, targets)
-        assert len(eval_seq) == (
-            1 if i else 2
-        )
+        assert len(eval_seq) == (1 if i else 2)
         continue
 
 
 def test_get_cost_on_zero_cost(simple_drudge):
-    """Test correct behaviour of get_flop_cost at input with no FLOP cost.
-    """
+    """Test correct behaviour of get_flop_cost at input with no FLOP cost."""
 
     dr = simple_drudge
 
     a, b = dr.ds[:2]
 
-    x = IndexedBase('x')
-    r = IndexedBase('y')
+    x = IndexedBase("x")
+    r = IndexedBase("y")
 
-    targets = [
-        dr.define_einst(x[a, b], r[a, b])
-    ]
+    targets = [dr.define_einst(x[a, b], r[a, b])]
 
-    for i in [
-        get_flop_cost(targets),
-        get_flop_cost(targets, leading=True)
-    ]:
+    for i in [get_flop_cost(targets), get_flop_cost(targets, leading=True)]:
         assert i == 0
         continue
 
 
-@pytest.mark.parametrize('ext_names,sum_name', [
-    ('a b', 'c'),
-    ('a b', 'e'),
-    ('b c', 'd'),
-    ('c d', 'e'),
-    ('f g', 'h'),
-    ('g h', 'a'),
-])
+@pytest.mark.parametrize(
+    "ext_names,sum_name",
+    [
+        ("a b", "c"),
+        ("a b", "e"),
+        ("b c", "d"),
+        ("c d", "e"),
+        ("f g", "h"),
+        ("g h", "a"),
+    ],
+)
 def test_verification_of_a_result_with_any_external_symbols(
-        simple_drudge, ext_names, sum_name
+    simple_drudge, ext_names, sum_name
 ):
     """Verification must not depend on which symbols the caller used.
 
@@ -400,14 +418,15 @@ def test_verification_of_a_result_with_any_external_symbols(
     i0, i1 = symbols(ext_names)
     k = symbols(sum_name)
 
-    x = IndexedBase('X')
-    y, z, u = (IndexedBase(i) for i in ['Y', 'Z', 'U'])
-    res = IndexedBase('res')
+    x = IndexedBase("X")
+    y, z, u = (IndexedBase(i) for i in ["Y", "Z", "U"])
+    res = IndexedBase("res")
 
-    targets = [dr.define_einst(
-        res[i0, i1],
-        x[i0, k] * y[k, i1] + x[i0, k] * z[k, i1] + u[i0, i1]
-    )]
+    targets = [
+        dr.define_einst(
+            res[i0, i1], x[i0, k] * y[k, i1] + x[i0, k] * z[k, i1] + u[i0, i1]
+        )
+    ]
 
     eval_seq = optimize(targets)
     assert verify_eval_seq(eval_seq, targets)
@@ -422,17 +441,19 @@ def test_verification_still_rejects_a_wrong_result(simple_drudge):
 
     dr = simple_drudge
 
-    x = IndexedBase('X')
-    y, z, u = (IndexedBase(i) for i in ['Y', 'Z', 'U'])
-    res = IndexedBase('res')
+    x = IndexedBase("X")
+    y, z, u = (IndexedBase(i) for i in ["Y", "Z", "U"])
+    res = IndexedBase("res")
 
-    for ext_names, sum_name in [('a b', 'c'), ('c d', 'e')]:
+    for ext_names, sum_name in [("a b", "c"), ("c d", "e")]:
         i0, i1 = symbols(ext_names)
         k = symbols(sum_name)
-        targets = [dr.define_einst(
-            res[i0, i1],
-            x[i0, k] * y[k, i1] + x[i0, k] * z[k, i1] + u[i0, i1]
-        )]
+        targets = [
+            dr.define_einst(
+                res[i0, i1],
+                x[i0, k] * y[k, i1] + x[i0, k] * z[k, i1] + u[i0, i1],
+            )
+        ]
 
         eval_seq = list(optimize(targets))
         assert verify_eval_seq(eval_seq, targets)

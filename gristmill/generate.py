@@ -9,8 +9,16 @@ import typing
 
 from drudge.term import try_resolve_range
 from sympy import (
-    Expr, Add, Mul, Pow, Integer, Rational, Float, Indexed, IndexedBase,
-    Symbol
+    Expr,
+    Add,
+    Mul,
+    Pow,
+    Integer,
+    Rational,
+    Float,
+    Indexed,
+    IndexedBase,
+    Symbol,
 )
 from sympy.printing.printer import Printer
 from sympy.printing.c import C89CodePrinter
@@ -26,6 +34,7 @@ from .utils import JinjaEnv
 # General description of events
 # -----------------------------
 #
+
 
 class TensorComp:
     """Full description of a tensor computation.
@@ -43,8 +52,7 @@ class TensorComp:
 
     @property
     def is_interm(self):
-        """If the computation is an intermediate.
-        """
+        """If the computation is an intermediate."""
         return self._is_interm
 
     @property
@@ -54,14 +62,12 @@ class TensorComp:
 
     @property
     def ctx(self):
-        """The rendering context for the entire computation.
-        """
+        """The rendering context for the entire computation."""
         return self._ctx
 
     @property
     def target(self):
-        """The base of the target tensor to compute.
-        """
+        """The base of the target tensor to compute."""
         return self._def.base
 
     def __str__(self):
@@ -74,26 +80,23 @@ class TensorComp:
 
 
 class TensorDecl(typing.NamedTuple):
-    """Events for declaration of intermediate tensors.
-    """
+    """Events for declaration of intermediate tensors."""
 
     comput: TensorComp
 
     def __repr__(self):
-        """Form a string, mostly for debugging.
-        """
-        return '_TensorDecl({!s})'.format(self.comput)
+        """Form a string, mostly for debugging."""
+        return "_TensorDecl({!s})".format(self.comput)
 
 
 class BeginBody:
-    """Events for the beginning of the main computational body.
-    """
+    """Events for the beginning of the main computational body."""
+
     __slots__ = []
 
     def __repr__(self):
-        """Form a string representation.
-        """
-        return 'BeginBody()'
+        """Form a string representation."""
+        return "BeginBody()"
 
 
 class BeforeComp(typing.NamedTuple):
@@ -107,7 +110,7 @@ class BeforeComp(typing.NamedTuple):
 
     def __repr__(self):
         """Form a string, mostly for debugging."""
-        return '_BeforeCompute({!s})'.format(self.comput)
+        return "_BeforeCompute({!s})".format(self.comput)
 
 
 class CompTerm(typing.NamedTuple):
@@ -150,18 +153,17 @@ class OutOfUse(typing.NamedTuple):
 
     def __repr__(self):
         """Form a string, mostly for debugging."""
-        return '_NoLongerInUse({!s})'.format(self.comput)
+        return "_NoLongerInUse({!s})".format(self.comput)
 
 
 class EndBody:
-    """Events for the end of the main computational body.
-    """
+    """Events for the end of the main computational body."""
+
     __slots__ = []
 
     def __repr__(self):
-        """Form a string representation.
-        """
-        return 'EndBody()'
+        """Form a string representation."""
+        return "EndBody()"
 
 
 #
@@ -209,11 +211,14 @@ class BasePrinter(abc.ABC):
     """
 
     def __init__(
-            self, scal_printer: Printer, indexed_proc_cb=lambda x, p: None,
-            extr_unary=True, base_indent=1, **kwargs
+        self,
+        scal_printer: Printer,
+        indexed_proc_cb=lambda x, p: None,
+        extr_unary=True,
+        base_indent=1,
+        **kwargs,
     ):
-        """Initialize a base printer.
-        """
+        """Initialize a base printer."""
 
         env = JinjaEnv(**kwargs)
 
@@ -316,7 +321,6 @@ class BasePrinter(abc.ABC):
 
         # Render each term in turn.
         for term in tensor_def.rhs_terms:
-
             term_ctx = types.SimpleNamespace()
             term_ctx.orig_term = term
             terms.append(term_ctx)
@@ -353,26 +357,24 @@ class BasePrinter(abc.ABC):
                     numerator.append(factor)
                 continue
 
-            if (
-                len(denominator) == 0 and (
-                    len(numerator) == 1
-                    and isinstance(numerator[0], (Integer, Float, Symbol))
-                    or len(numerator) == 0
-                )
+            if len(denominator) == 0 and (
+                len(numerator) == 1
+                and isinstance(numerator[0], (Integer, Float, Symbol))
+                or len(numerator) == 0
             ):
                 term_ctx.single_factor = True
             else:
                 term_ctx.single_factor = False
 
-            term_ctx.phase = '+' if phase == 1 else '-'
+            term_ctx.phase = "+" if phase == 1 else "-"
             for i, j, k in [
-                (numerator, 'numerator', Add),
-                (denominator, 'denominator', (Add, Mul))
+                (numerator, "numerator", Add),
+                (denominator, "denominator", (Add, Mul)),
             ]:
                 val = prod_(i)
                 printed_val = self._print_scal(val)
                 if isinstance(val, k):
-                    printed_val = '(' + printed_val + ')'
+                    printed_val = "(" + printed_val + ")"
                 setattr(term_ctx, j, printed_val)
                 continue
 
@@ -388,10 +390,13 @@ class BasePrinter(abc.ABC):
                     factor_ctx = types.SimpleNamespace()
                     factor_ctx.base_expr = base
                     factor_ctx.base = self._print_scal(base)
-                    factor_ctx.indices = self._form_indices_ctx((
-                        (i, try_resolve_range(i, indices_dict, resolvers))
-                        for i in indices
-                    ), enforce=False)
+                    factor_ctx.indices = self._form_indices_ctx(
+                        (
+                            (i, try_resolve_range(i, indices_dict, resolvers))
+                            for i in indices
+                        ),
+                        enforce=False,
+                    )
                     indexed_factors.append(factor_ctx)
                 else:
                     other_factors_expr.append(factor)
@@ -408,9 +413,11 @@ class BasePrinter(abc.ABC):
         return ctx
 
     def proc_ctx(
-            self, tensor_def: TensorDef, term: typing.Optional[Term],
-            tensor_entry: types.SimpleNamespace,
-            term_entry: typing.Optional[types.SimpleNamespace]
+        self,
+        tensor_def: TensorDef,
+        term: typing.Optional[Term],
+        tensor_entry: types.SimpleNamespace,
+        term_entry: typing.Optional[types.SimpleNamespace],
     ):
         """Make additional processing of the rendering context.
 
@@ -435,21 +442,22 @@ class BasePrinter(abc.ABC):
         return
 
     def _form_indices_ctx(
-            self,
-            pairs: typing.Iterable[typing.Tuple[Expr, typing.Optional[Range]]],
-            enforce=True
+        self,
+        pairs: typing.Iterable[typing.Tuple[Expr, typing.Optional[Range]]],
+        enforce=True,
     ):
-        """Form indices context.
-        """
+        """Form indices context."""
 
         res = []
         for index, range_ in pairs:
-
             if range_ is None or not range_.bounded:
                 if enforce:
                     raise ValueError(
-                        'Invalid range to print', range_, 'for', index,
-                        'expecting a bounded range.'
+                        "Invalid range to print",
+                        range_,
+                        "for",
+                        index,
+                        "expecting a bounded range.",
                     )
                 else:
                     lower = None
@@ -466,12 +474,19 @@ class BasePrinter(abc.ABC):
                 upper = self._print_scal(upper_expr)
                 size = self._print_scal(size_expr)
 
-            res.append(types.SimpleNamespace(
-                index=self._print_scal(index), range=range_,
-                lower=lower, upper=upper, size=size,
-                index_expr=index, lower_expr=lower_expr, upper_expr=upper_expr,
-                size_expr=size_expr
-            ))
+            res.append(
+                types.SimpleNamespace(
+                    index=self._print_scal(index),
+                    range=range_,
+                    lower=lower,
+                    upper=upper,
+                    size=size,
+                    index_expr=index,
+                    lower_expr=lower_expr,
+                    upper_expr=upper_expr,
+                    size_expr=size_expr,
+                )
+            )
             continue
 
         return res
@@ -481,8 +496,7 @@ class BasePrinter(abc.ABC):
         return self._scal_printer.doprint(expr)
 
     def _extr_base_indices(self, factor):
-        """Attempt to extract base and indices from a factor.
-        """
+        """Attempt to extract base and indices from a factor."""
 
         # Direct extraction for indexed quantities.
         if isinstance(factor, Indexed):
@@ -581,7 +595,7 @@ class BasePrinter(abc.ABC):
         interms = set()  # Bases for the intermediates
         for idx, def_ in enumerate(defs):
             base = def_.base
-            is_interm = hasattr(def_, 'if_interm') and def_.if_interm
+            is_interm = hasattr(def_, "if_interm") and def_.if_interm
             comput = TensorComp(
                 is_interm=is_interm, def_=def_, ctx=self.transl(def_)
             )
@@ -609,9 +623,7 @@ class BasePrinter(abc.ABC):
                     if term.has_base(b):
                         b_idx = base2idx[b]
                         term_ctx.pend_prereqs.add(b_idx)
-                        computs[b_idx].deps[
-                            (comput_idx, term_idx)
-                        ] = None
+                        computs[b_idx].deps[(comput_idx, term_idx)] = None
                     continue
                 continue
             continue
@@ -650,8 +662,11 @@ class BasePrinter(abc.ABC):
         return events
 
     def _add_term_eval(
-            self, events, computs: typing.Sequence[TensorComp], comput_idx,
-            term_idx
+        self,
+        events,
+        computs: typing.Sequence[TensorComp],
+        comput_idx,
+        term_idx,
     ):
         """Add the evaluation of a term to the events list.
 
@@ -670,13 +685,15 @@ class BasePrinter(abc.ABC):
         term_ctx = term_ctxes[term_idx]
         if len(term_ctx.pend_prereqs) != 0:
             raise ValueError(
-                'Invalid evaluation sequence!', comput.target, 'needs',
-                [computs[i].target for i in term_ctx.pend_prereqs]
+                "Invalid evaluation sequence!",
+                comput.target,
+                "needs",
+                [computs[i].target for i in term_ctx.pend_prereqs],
             )
 
-        events.append(CompTerm(
-            comput=comput, term_idx=term_idx, term_ctx=term_ctx
-        ))
+        events.append(
+            CompTerm(comput=comput, term_idx=term_idx, term_ctx=term_ctx)
+        )
 
         # Possibly free dependent intermediates.
         for i in term_ctx.fin_prereqs:
@@ -772,7 +789,7 @@ class BasePrinter(abc.ABC):
             CompTerm: self.print_comp_term,
             OutOfUse: self.print_out_of_use,
             BeginBody: self.print_begin_body,
-            EndBody: self.print_end_body
+            EndBody: self.print_end_body,
         }
 
         for event in events:
@@ -782,18 +799,18 @@ class BasePrinter(abc.ABC):
             else:
                 cls = type(event)
                 if cls not in dispatch:
-                    raise ValueError('Invalid event', event)
+                    raise ValueError("Invalid event", event)
                 code = dispatch[cls](event)
                 self._add_section(execs, code)
             continue
 
         if separate_decls:
-            return '\n'.join(decls), '\n'.join(execs)
+            return "\n".join(decls), "\n".join(execs)
         else:
-            return '\n'.join(itertools.chain(decls, execs))
+            return "\n".join(itertools.chain(decls, execs))
 
     def _add_section(
-            self, secs: typing.List[str], new_sec: typing.Optional[str]
+        self, secs: typing.List[str], new_sec: typing.Optional[str]
     ):
         """Add a new section of code to the list of sections.
 
@@ -802,9 +819,7 @@ class BasePrinter(abc.ABC):
         set, with a new line guaranteed on the last line.
         """
         if new_sec is not None:
-            secs.append(self._env.indent_lines(
-                new_sec, self._base_indent
-            ))
+            secs.append(self._env.indent_lines(new_sec, self._base_indent))
 
     def render(self, templ_name: str, ctx: types.SimpleNamespace) -> str:
         """Render the given context for the given template.
@@ -895,12 +910,14 @@ def mangle_base(func):
 
         @mangle_base
         def print_indexed_base(base, indices):
-            o_slice = '0:m'
-            v_slice = 'm:n'
-            if base == 'f':
-                return 'f[{}]'.format(','.join(
-                    o_slice if i.range == o else v_slice for i in indices
-                ))
+            o_slice = "0:m"
+            v_slice = "m:n"
+            if base == "f":
+                return "f[{}]".format(
+                    ",".join(
+                        o_slice if i.range == o else v_slice for i in indices
+                    )
+                )
             else:
                 return base
 
@@ -954,8 +971,14 @@ class NaiveCodePrinter(BasePrinter):
     """
 
     def __init__(
-            self, scal_printer: Printer, print_indexed_cb, stmt_end='',
-            zero_literal='0.0', add_filters=None, add_globals=None, **kwargs
+        self,
+        scal_printer: Printer,
+        print_indexed_cb,
+        stmt_end="",
+        zero_literal="0.0",
+        add_filters=None,
+        add_globals=None,
+        **kwargs,
     ):
         """
         Initialize the automatic code printer.
@@ -981,16 +1004,16 @@ class NaiveCodePrinter(BasePrinter):
         """
 
         filters = {
-            'form_loop_opens': self._form_loop_opens,
-            'form_loop_closes': self._form_loop_closes
+            "form_loop_opens": self._form_loop_opens,
+            "form_loop_closes": self._form_loop_closes,
         }
         if add_filters is not None:
             filters.update(add_filters)
 
         # Some globals for template rendering.
         globals_ = {
-            'stmt_end': stmt_end,
-            'zero_literal': zero_literal,
+            "stmt_end": stmt_end,
+            "zero_literal": zero_literal,
         }
         if add_globals is not None:
             globals_.update(add_globals)
@@ -1003,9 +1026,11 @@ class NaiveCodePrinter(BasePrinter):
         self._print_indexed = print_indexed_cb
 
     def proc_ctx(
-            self, tensor_def: TensorDef, term: typing.Optional[Term],
-            tensor_entry: types.SimpleNamespace,
-            term_entry: typing.Optional[types.SimpleNamespace]
+        self,
+        tensor_def: TensorDef,
+        term: typing.Optional[Term],
+        tensor_entry: types.SimpleNamespace,
+        term_entry: typing.Optional[types.SimpleNamespace],
     ):
         """Process the context.
 
@@ -1025,7 +1050,7 @@ class NaiveCodePrinter(BasePrinter):
         else:
             factors = []
 
-            if term_entry.numerator != '1':
+            if term_entry.numerator != "1":
                 factors.append(term_entry.numerator)
 
             for i in term_entry.indexed_factors:
@@ -1038,11 +1063,11 @@ class NaiveCodePrinter(BasePrinter):
                     #
                     # cf BasePrinter._extr_base_indices.
                     symb = _get_only_symb(base_expr)
-                    placeholder_name = 'GRISTMILLINTERNALPLACEHOLDER'
+                    placeholder_name = "GRISTMILLINTERNALPLACEHOLDER"
                     placeholder = Symbol(placeholder_name)
-                    top = self._print_scal(base_expr.xreplace({
-                        symb: placeholder
-                    }))
+                    top = self._print_scal(
+                        base_expr.xreplace({symb: placeholder})
+                    )
                     indexed = self._print_indexed(str(symb), i.indices)
                     i.indexed = top.replace(placeholder_name, indexed)
 
@@ -1051,11 +1076,11 @@ class NaiveCodePrinter(BasePrinter):
 
             factors.extend(term_entry.other_factors)
 
-            parts = [' * '.join(factors)]
-            if term_entry.denominator != '1':
-                parts.extend(['/', term_entry.denominator])
+            parts = [" * ".join(factors)]
+            if term_entry.denominator != "1":
+                parts.extend(["/", term_entry.denominator])
 
-            term_entry.amp = ' '.join(parts)
+            term_entry.amp = " ".join(parts)
 
         return
 
@@ -1069,14 +1094,12 @@ class NaiveCodePrinter(BasePrinter):
 
     @abc.abstractmethod
     def form_loop_open(self, ctx) -> str:
-        """Form the loop opening for an index.
-        """
+        """Form the loop opening for an index."""
         pass
 
     @abc.abstractmethod
     def form_loop_close(self, ctx) -> str:
-        """Form the closing for a loop over the given index.
-        """
+        """Form the closing for a loop over the given index."""
         pass
 
     def _form_loop_opens(self, indices, base_level=0):
@@ -1085,7 +1108,7 @@ class NaiveCodePrinter(BasePrinter):
         This method is primarily for usage inside templates under the name
         without the initial underscore.
         """
-        return '\n'.join(
+        return "\n".join(
             self._env.form_indent(base_level + i) + self.form_loop_open(v)
             for i, v in enumerate(indices)
         )
@@ -1097,7 +1120,7 @@ class NaiveCodePrinter(BasePrinter):
         """
         n_indices = len(indices)
 
-        return '\n'.join(
+        return "\n".join(
             self._env.form_indent(base_level + n_indices - i - 1)
             + self.form_loop_close(v)
             for i, v in enumerate(reversed(indices))
@@ -1108,7 +1131,7 @@ class NaiveCodePrinter(BasePrinter):
 
         Here we only attempt to zero-out the tensor naively.
         """
-        return self.render('naivezero', event.comput.ctx)
+        return self.render("naivezero", event.comput.ctx)
 
     def print_comp_term(self, event: CompTerm):
         """Print the action to add a term to a target tensor.
@@ -1117,7 +1140,7 @@ class NaiveCodePrinter(BasePrinter):
         """
         ctx = event.comput.ctx
         ctx.term = event.term_ctx
-        code = self.render('naiveterm', ctx)
+        code = self.render("naiveterm", ctx)
         del ctx.term
         return code
 
@@ -1132,9 +1155,7 @@ def print_c_indexed(base, indices):
 
     The indexed will be printed as multi-dimensional array.
     """
-    return base + ''.join(
-        '[{}]'.format(i.index) for i in indices
-    )
+    return base + "".join("[{}]".format(i.index) for i in indices)
 
 
 class CPrinter(NaiveCodePrinter):
@@ -1152,21 +1173,25 @@ class CPrinter(NaiveCodePrinter):
         """
 
         super().__init__(
-            C89CodePrinter(), print_indexed_cb=print_indexed_cb,
-            line_cont='\\', stmt_end=';', **kwargs
+            C89CodePrinter(),
+            print_indexed_cb=print_indexed_cb,
+            line_cont="\\",
+            stmt_end=";",
+            **kwargs,
         )
 
     def form_loop_open(self, ctx):
-        """Form the loop opening for C.
-        """
-        return 'for({index}={lower}; {index}<{upper}; {index}++)'.format(
-            index=ctx.index, lower=ctx.lower, upper=ctx.upper
-        ) + ' {'
+        """Form the loop opening for C."""
+        return (
+            "for({index}={lower}; {index}<{upper}; {index}++)".format(
+                index=ctx.index, lower=ctx.lower, upper=ctx.upper
+            )
+            + " {"
+        )
 
     def form_loop_close(self, _):
-        """Form the loop closing for C.
-        """
-        return '}'
+        """Form the loop closing for C."""
+        return "}"
 
     #
     # Other abstract methods.
@@ -1179,23 +1204,22 @@ class CPrinter(NaiveCodePrinter):
         """
         ctx = event.comput.ctx
 
-        return '{} {}{};'.format('double', ctx.base, ''.join(
-            '[{}]'.format(i.size) for i in ctx.indices
-        ))
+        return "{} {}{};".format(
+            "double",
+            ctx.base,
+            "".join("[{}]".format(i.size) for i in ctx.indices),
+        )
 
     def print_begin_body(self, event: BeginBody):
-        """Do nothing.
-        """
+        """Do nothing."""
         return None
 
     def print_out_of_use(self, event: OutOfUse):
-        """Do nothing.
-        """
+        """Do nothing."""
         return None
 
     def print_end_body(self, event: EndBody):
-        """Do nothing.
-        """
+        """Do nothing."""
         return None
 
 
@@ -1210,9 +1234,9 @@ def print_fortran_indexed(base, indices):
     By default, the multi-dimensional array format will be used.
     """
     return base + (
-        '' if len(indices) == 0 else '({})'.format(', '.join(
-            i.index for i in indices
-        ))
+        ""
+        if len(indices) == 0
+        else "({})".format(", ".join(i.index for i in indices))
     )
 
 
@@ -1245,27 +1269,30 @@ class FortranPrinter(NaiveCodePrinter):
     """
 
     def __init__(
-            self, print_indexed_cb=print_fortran_indexed, openmp=True,
-            default_type='real', heap_interm=True, explicit_bounds=False,
-            **kwargs
+        self,
+        print_indexed_cb=print_fortran_indexed,
+        openmp=True,
+        default_type="real",
+        heap_interm=True,
+        explicit_bounds=False,
+        **kwargs,
     ):
-        """Initialize a naive Fortran code printer.
-
-
-        """
+        """Initialize a naive Fortran code printer."""
 
         if openmp:
             add_templ = {
-                'term_prelude': _FORTRAN_OMP_TERM_PRELUDE,
-                'term_finale': _FORTRAN_OMP_TERM_FINALE,
+                "term_prelude": _FORTRAN_OMP_TERM_PRELUDE,
+                "term_finale": _FORTRAN_OMP_TERM_FINALE,
             }
         else:
             add_templ = None
 
         super().__init__(
-            FCodePrinter(settings={'source_format': 'free'}),
-            print_indexed_cb=print_indexed_cb, line_cont='&',
-            add_templ=add_templ, **kwargs
+            FCodePrinter(settings={"source_format": "free"}),
+            print_indexed_cb=print_indexed_cb,
+            line_cont="&",
+            add_templ=add_templ,
+            **kwargs,
         )
 
         self._openmp = openmp
@@ -1278,17 +1305,16 @@ class FortranPrinter(NaiveCodePrinter):
     #
 
     def _form_bounds(self, ctx, explicit_bounds):
-        """Form the string for array bounds.
-        """
-        return ', '.join(
-            ':'.join([self._print_lower(i.lower_expr), i.upper])
-            if explicit_bounds else i.size
+        """Form the string for array bounds."""
+        return ", ".join(
+            ":".join([self._print_lower(i.lower_expr), i.upper])
+            if explicit_bounds
+            else i.size
             for i in ctx.indices
         )
 
     def _print_lower(self, lower: Expr):
-        """Print the lower bound based on the Fortran convention.
-        """
+        """Print the lower bound based on the Fortran convention."""
         return self._print_scal(lower + Integer(1))
 
     #
@@ -1296,19 +1322,17 @@ class FortranPrinter(NaiveCodePrinter):
     #
 
     def _form_loop_opens(self, indices, base_level=0):
-        """Form the nested loop openings for Fortran.
-        """
-        return '\n'.join(
+        """Form the nested loop openings for Fortran."""
+        return "\n".join(
             self._env.form_indent(base_level + i) + self.form_loop_open(v)
             for i, v in enumerate(reversed(indices))
         )
 
     def _form_loop_closes(self, indices, base_level=0):
-        """Form the nested loop closings for Fortran.
-        """
+        """Form the nested loop closings for Fortran."""
         n_indices = len(indices)
 
-        return '\n'.join(
+        return "\n".join(
             self._env.form_indent(base_level + n_indices - i - 1)
             + self.form_loop_close(v)
             for i, v in enumerate(indices)
@@ -1323,13 +1347,13 @@ class FortranPrinter(NaiveCodePrinter):
 
         lower = self._print_lower(ctx.lower_expr)
 
-        return 'do {index}={lower}, {upper}'.format(
+        return "do {index}={lower}, {upper}".format(
             index=ctx.index, lower=lower, upper=ctx.upper
         )
 
     def form_loop_close(self, _):
         """Form the loop ending for Fortran."""
-        return 'end do'
+        return "end do"
 
     #
     # For actual base printer.
@@ -1350,20 +1374,19 @@ class FortranPrinter(NaiveCodePrinter):
 
         if len(ctx.indices) > 0:
             if heap_interm:
-                bounds = ', '.join(':' for _ in ctx.indices)
+                bounds = ", ".join(":" for _ in ctx.indices)
             else:
                 bounds = self._form_bounds(ctx, explicit_bounds)
-            sizes_decl = ', dimension({})'.format(bounds)
+            sizes_decl = ", dimension({})".format(bounds)
             if heap_interm:
-                sizes_decl += ', allocatable'
+                sizes_decl += ", allocatable"
         else:
-            sizes_decl = ''
+            sizes_decl = ""
 
-        return '{}{} :: {}'.format(decl_type, sizes_decl, ctx.base)
+        return "{}{} :: {}".format(decl_type, sizes_decl, ctx.base)
 
     def print_begin_body(self, event: BeginBody):
-        """Start the OpenMP environment if enabled.
-        """
+        """Start the OpenMP environment if enabled."""
         if self._openmp:
             return _FORTRAN_OMP_START
         else:
@@ -1379,35 +1402,38 @@ class FortranPrinter(NaiveCodePrinter):
         explicit_bounds = self._explicit_bounds
 
         ctx = event.comput.ctx
-        zero_out = '{} = {}'.format(ctx.base, '0.0')
+        zero_out = "{} = {}".format(ctx.base, "0.0")
         if self._openmp:
-            zero_out = _FORTRAN_OMP_ZERO_PRELUDE + zero_out + '\n' \
-                    + _FORTRAN_OMP_ZERO_FINALE
+            zero_out = (
+                _FORTRAN_OMP_ZERO_PRELUDE
+                + zero_out
+                + "\n"
+                + _FORTRAN_OMP_ZERO_FINALE
+            )
 
         if_alloc = (
-                self._heap_interm and event.comput.is_interm
-                and len(event.comput.ctx.indices) > 0
+            self._heap_interm
+            and event.comput.is_interm
+            and len(event.comput.ctx.indices) > 0
         )
         if if_alloc:
             bounds = self._form_bounds(ctx, explicit_bounds)
-            alloc = 'allocate({}({}))\n'.format(ctx.base, bounds)
+            alloc = "allocate({}({}))\n".format(ctx.base, bounds)
             return alloc + zero_out
         else:
             return zero_out
 
     def print_out_of_use(self, event: OutOfUse):
-        """Print the deallocation command.
-        """
+        """Print the deallocation command."""
         assert event.comput.is_interm
         ctx = event.comput.ctx
         if not self._heap_interm or len(ctx.indices) == 0:
             return None
 
-        return 'deallocate({})'.format(ctx.base)
+        return "deallocate({})".format(ctx.base)
 
     def print_end_body(self, event: EndBody):
-        """Close OpenMP parallel body when enabled.
-        """
+        """Close OpenMP parallel body when enabled."""
         if self._openmp:
             return _FORTRAN_OMP_END
         else:
@@ -1476,21 +1502,25 @@ class EinsumPrinter(BasePrinter):
     """
 
     def __init__(
-            self, zeros='zeros', default_type='float64', einsum='einsum', extr_unary=True,
-            add_globals=None, **kwargs
+        self,
+        zeros="zeros",
+        default_type="float64",
+        einsum="einsum",
+        extr_unary=True,
+        add_globals=None,
+        **kwargs,
     ):
-        """Initialize the printer.
-        """
+        """Initialize the printer."""
 
-        globals_ = {
-            'einsum': einsum
-        }
+        globals_ = {"einsum": einsum}
         if add_globals is not None:
             globals_.update(add_globals)
 
         super().__init__(
-            PythonCodePrinter(), extr_unary=extr_unary, add_globals=globals_,
-            **kwargs
+            PythonCodePrinter(),
+            extr_unary=extr_unary,
+            add_globals=globals_,
+            **kwargs,
         )
 
         self._zeros = zeros
@@ -1498,58 +1528,50 @@ class EinsumPrinter(BasePrinter):
         self._einsum = einsum
 
     def print_decl(self, event: TensorDecl):
-        """Do nothing.
-        """
+        """Do nothing."""
         return None
 
     def print_begin_body(self, event: BeginBody):
-        """Import packages.
-        """
+        """Import packages."""
         preamble = "from numpy import zeros, dtype"
         return preamble
 
     def print_before_comp(self, event: BeforeComp):
-        """Initialize the tensor to zero.
-        """
+        """Initialize the tensor to zero."""
         ctx = event.comput.ctx
 
         if len(ctx.indices) > 0:
-            shape = '({})'.format(', '.join(
-                i.size for i in ctx.indices
-            ))
+            shape = "({})".format(", ".join(i.size for i in ctx.indices))
             if self._default_type is None:
                 args = shape
             else:
                 args = "{}, dtype='{}'".format(shape, self._default_type)
 
-            rhs = '{}({})'.format(self._zeros, args)
+            rhs = "{}({})".format(self._zeros, args)
         else:
             if self._default_type is None:
-                rhs = '0.0'
+                rhs = "0.0"
             else:
                 rhs = "dtype('{}').type(0)".format(self._default_type)
 
-        return '{} = {}'.format(ctx.base, rhs)
+        return "{} = {}".format(ctx.base, rhs)
 
     def print_comp_term(self, event: CompTerm):
-        """Print the evaluation of a term to be added to the target.
-        """
+        """Print the evaluation of a term to be added to the target."""
 
         ctx = event.comput.ctx
         ctx.term = event.term_ctx
-        code = self.render('einsum.jinja', ctx)
+        code = self.render("einsum.jinja", ctx)
         del ctx.term
 
         return code
 
     def print_out_of_use(self, event: OutOfUse):
-        """Remove an used intermediate tensor.
-        """
-        return 'del {}'.format(event.comput.ctx.base)
+        """Remove an used intermediate tensor."""
+        return "del {}".format(event.comput.ctx.base)
 
     def print_end_body(self, event: EndBody):
-        """Do nothing.
-        """
+        """Do nothing."""
         return None
 
 
@@ -1574,64 +1596,60 @@ class OMEinsumPrinter(BasePrinter):
     """
 
     def __init__(
-            self, default_type='Float64', extr_unary=True,
-            add_globals=None, **kwargs
+        self,
+        default_type="Float64",
+        extr_unary=True,
+        add_globals=None,
+        **kwargs,
     ):
-        """Initialize the printer.
-        """
+        """Initialize the printer."""
 
-        globals_ = {
-            'ein': 'ein'
-        }
+        globals_ = {"ein": "ein"}
         if add_globals is not None:
             globals_.update(add_globals)
 
         super().__init__(
-            JuliaCodePrinter(), extr_unary=extr_unary, add_globals=globals_,
-            **kwargs
+            JuliaCodePrinter(),
+            extr_unary=extr_unary,
+            add_globals=globals_,
+            **kwargs,
         )
 
-        self._zeros = 'zeros'
+        self._zeros = "zeros"
         self._default_type = default_type
-        self._ein_str = 'ein'
+        self._ein_str = "ein"
 
     def print_decl(self, event: TensorDecl):
-        """Do nothing.
-        """
+        """Do nothing."""
         return None
 
     def print_begin_body(self, event: BeginBody):
-        """Import packages.
-        """
-        preamble = "using LinearAlgebra, OMEinsum" 
+        """Import packages."""
+        preamble = "using LinearAlgebra, OMEinsum"
         return preamble
 
     def print_before_comp(self, event: BeforeComp):
-        """Initialize the tensor to zero.
-        """
+        """Initialize the tensor to zero."""
         ctx = event.comput.ctx
 
         if len(ctx.indices) > 0:
-            shape = '{}'.format(', '.join(
-                i.size for i in ctx.indices
-            ))
+            shape = "{}".format(", ".join(i.size for i in ctx.indices))
             if self._default_type is None:
                 args = shape
             else:
-                args = '{}, {}'.format(self._default_type, shape)
+                args = "{}, {}".format(self._default_type, shape)
 
-            rhs = '{}({})'.format(self._zeros, args)
+            rhs = "{}({})".format(self._zeros, args)
         else:
             if self._default_type is None:
-                rhs = '0.0'
+                rhs = "0.0"
             else:
-                rhs = 'zero({})'.format(self._default_type)
+                rhs = "zero({})".format(self._default_type)
 
-        return '{} = {}'.format(ctx.base, rhs)
+        return "{} = {}".format(ctx.base, rhs)
 
     def print_comp_term(self, event: CompTerm):
-        """Print the evaluation of a term to be added to the target.
-        """
+        """Print the evaluation of a term to be added to the target."""
 
         ctx = event.comput.ctx
         ctx.term = event.term_ctx
@@ -1639,21 +1657,19 @@ class OMEinsumPrinter(BasePrinter):
             len(ctx.term.indexed_factors) == 1
             and ctx.term.indexed_factors[0].indices == ctx.indices
         ):
-            code = self.render('omeinsum_nocopy.jinja', ctx)
+            code = self.render("omeinsum_nocopy.jinja", ctx)
         else:
-            code = self.render('ein_str.jinja', ctx)
+            code = self.render("ein_str.jinja", ctx)
         del ctx.term
 
         return code
 
     def print_out_of_use(self, event: OutOfUse):
-        """Remove an used intermediate tensor.
-        """
-        return '{} = nothing'.format(event.comput.ctx.base)
+        """Remove an used intermediate tensor."""
+        return "{} = nothing".format(event.comput.ctx.base)
 
     def print_end_body(self, event: EndBody):
-        """Do nothing.
-        """
+        """Do nothing."""
         return None
 
 
@@ -1661,6 +1677,7 @@ class OMEinsumPrinter(BasePrinter):
 # Tiny utilities
 # --------------
 #
+
 
 def _get_only_symb(expr: Expr):
     """Get the only symbol in the given expression.

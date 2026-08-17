@@ -13,14 +13,20 @@ import warnings
 from drudge import TensorDef, prod_, Term, Range, sum_
 from networkx import Graph
 from sympy import (
-    Integer, Symbol, Expr, IndexedBase, Mul, Indexed, primitive, Wild,
-    default_sort_key, Pow
+    Integer,
+    Symbol,
+    Expr,
+    IndexedBase,
+    Mul,
+    Indexed,
+    primitive,
+    Wild,
+    default_sort_key,
+    Pow,
 )
 
 from ._parenth import parenth
-from .utils import (
-    Size, get_total_size, Tuple4Cmp, form_sized_range
-)
+from .utils import Size, get_total_size, Tuple4Cmp, form_sized_range
 
 
 #
@@ -113,11 +119,21 @@ class RepeatedTermsStrat(enum.Enum):
 
 
 def optimize(
-        computs: typing.Iterable[TensorDef], substs=None, simplify=True,
-        interm_fmt='tau^{}', contr_strat=ContrStrat.TRAV, opt_sum=True,
-        repeated_terms_strat=RepeatedTermsStrat.NATURAL, opt_symm=True,
-        req_an_opt=False, greedy_cutoff=-1, drop_cutoff=-1, rand_constr=False,
-        remove_shallow=True, res_at_end=True, stats=None
+    computs: typing.Iterable[TensorDef],
+    substs=None,
+    simplify=True,
+    interm_fmt="tau^{}",
+    contr_strat=ContrStrat.TRAV,
+    opt_sum=True,
+    repeated_terms_strat=RepeatedTermsStrat.NATURAL,
+    opt_symm=True,
+    req_an_opt=False,
+    greedy_cutoff=-1,
+    drop_cutoff=-1,
+    rand_constr=False,
+    remove_shallow=True,
+    res_at_end=True,
+    stats=None,
 ) -> typing.List[TensorDef]:
     """Optimize the evaluation of the given tensor computations.
 
@@ -230,27 +246,31 @@ def optimize(
 
     substs = {} if substs is None else substs
 
-    computs = [
-        i.simplify() if simplify else i.reset_dumms()
-        for i in computs
-    ]
+    computs = [i.simplify() if simplify else i.reset_dumms() for i in computs]
     if len(computs) == 0:
-        raise ValueError('No computation is given!')
+        raise ValueError("No computation is given!")
 
     if not isinstance(contr_strat, ContrStrat):
-        raise TypeError('Invalid contraction strategy', contr_strat)
+        raise TypeError("Invalid contraction strategy", contr_strat)
 
     if rand_constr:
         drop_cutoff = 2
         req_an_opt = True
 
     opt = _Optimizer(
-        computs, substs=substs, interm_fmt=interm_fmt,
-        contr_strat=contr_strat, opt_sum=opt_sum,
+        computs,
+        substs=substs,
+        interm_fmt=interm_fmt,
+        contr_strat=contr_strat,
+        opt_sum=opt_sum,
         repeated_terms_strat=repeated_terms_strat,
-        opt_symm=opt_symm, req_an_opt=req_an_opt,
-        greedy_cutoff=greedy_cutoff, drop_cutoff=drop_cutoff,
-        rand_constr=rand_constr, remove_shallow=remove_shallow, stats=stats
+        opt_symm=opt_symm,
+        req_an_opt=req_an_opt,
+        greedy_cutoff=greedy_cutoff,
+        drop_cutoff=drop_cutoff,
+        rand_constr=rand_constr,
+        remove_shallow=remove_shallow,
+        stats=stats,
     )
 
     return opt.optimize(res_at_end=res_at_end)
@@ -288,6 +308,7 @@ class _Grain(typing.NamedTuple):
 
     Basically it is a tensor definition with localized terms.
     """
+
     base: _Base
     exts: _SrPairs
     terms: _Terms
@@ -295,6 +316,7 @@ class _Grain(typing.NamedTuple):
 
 class _IntermRef(typing.NamedTuple):
     """A reference to an intermediate."""
+
     coeff: Expr
     base: _Base
     indices: _Indices
@@ -326,7 +348,7 @@ _SUMMED = 2
 _SUM_DIM = 0
 _EXT_DIM = 1
 
-_SUBSTED_EVAL_BASE = Symbol('gristmillSubstitutedEvalBase')
+_SUBSTED_EVAL_BASE = Symbol("gristmillSubstitutedEvalBase")
 
 
 #
@@ -339,7 +361,7 @@ class _SymbFactory(dict):
     """A small symbol factory."""
 
     def __missing__(self, key):
-        return Symbol('gristmillInternalSymbol{}'.format(key))
+        return Symbol("gristmillInternalSymbol{}".format(key))
 
 
 _SYMB_FACTORY = _SymbFactory()
@@ -349,7 +371,7 @@ class _WildFactory(dict):
     """A small wild symbol factory."""
 
     def __missing__(self, key):
-        return Wild('gristmillInternalWild{}'.format(key))
+        return Wild("gristmillInternalWild{}".format(key))
 
 
 _WILD_FACTORY = _WildFactory()
@@ -364,9 +386,7 @@ _WILD_FACTORY = _WildFactory()
 def _get_canon_coeff(coeffs, preferred):
     """Get the canonical coefficient from a list of coefficients."""
 
-    expr = sum(
-        v * _SYMB_FACTORY[i] for i, v in enumerate(coeffs)
-    ).together()
+    expr = sum(v * _SYMB_FACTORY[i] for i, v in enumerate(coeffs)).together()
 
     frac = _UNITY  # The fractional part.
     if isinstance(expr, Mul):
@@ -376,9 +396,9 @@ def _get_canon_coeff(coeffs, preferred):
             continue
         expr /= frac
 
-    coeff, _ = primitive(expr, *[
-        _SYMB_FACTORY[i] for i, _ in enumerate(coeffs)
-    ])
+    coeff, _ = primitive(
+        expr, *[_SYMB_FACTORY[i] for i, _ in enumerate(coeffs)]
+    )
 
     # Initial coefficient without phase.
     init_coeff = coeff * frac
@@ -404,7 +424,8 @@ def _get_canon_coeff(coeffs, preferred):
         phase = _UNITY
     else:
         preferred_phase = (
-            _NEG_UNITY if preferred.has(_NEG_UNITY) or preferred.is_negative
+            _NEG_UNITY
+            if preferred.has(_NEG_UNITY) or preferred.is_negative
             else _UNITY
         )
         phase = preferred_phase
@@ -434,12 +455,10 @@ def _index(base, indices, strip=False) -> Expr:
 
 
 class _EvalNode:
-    """A node in the evaluation graph.
-    """
+    """A node in the evaluation graph."""
 
     def __init__(self, base: Symbol, exts: _SrPairs):
-        """Initialize the evaluation node.
-        """
+        """Initialize the evaluation node."""
 
         self.base = base
         self.exts = exts
@@ -486,14 +505,13 @@ class _Sum(_EvalNode):
 
     def __repr__(self):
         """Form a representation string for the node."""
-        return '_Sum(base={}, exts={}, sum_terms={})'.format(
+        return "_Sum(base={}, exts={}, sum_terms={})".format(
             repr(self.base), repr(self.exts), repr(self.sum_terms)
         )
 
 
 class _Prod(_EvalNode):
-    """Product nodes in the evaluation graph.
-    """
+    """Product nodes in the evaluation graph."""
 
     def __init__(self, base, exts, sums, coeff, factors):
         """Initialize the node."""
@@ -504,9 +522,12 @@ class _Prod(_EvalNode):
 
     def __repr__(self):
         """Form a representation string for the node."""
-        return '_Prod(base={}, exts={}, sums={}, coeff={}, factors={})'.format(
-            repr(self.base), repr(self.exts), repr(self.sums),
-            repr(self.coeff), repr(self.factors)
+        return "_Prod(base={}, exts={}, sums={}, coeff={}, factors={})".format(
+            repr(self.base),
+            repr(self.exts),
+            repr(self.sums),
+            repr(self.coeff),
+            repr(self.factors),
         )
 
 
@@ -517,6 +538,7 @@ class _Interm(typing.NamedTuple):
     and the actual node for this, which can be helpful for getting
     information about a newly-formed intermediate.
     """
+
     ref: Expr
     node: _EvalNode
 
@@ -560,9 +582,9 @@ def _gen_broken_sums(sum_chunks):
             joined_size = curr_size * new_size
             joined_chunks = curr_chunks | 1 << next_idx
             joined_sums = curr_sums | new_sums
-            heapq.heappush(queue, Tuple4Cmp((
-                joined_size, joined_chunks, joined_sums
-            )))
+            heapq.heappush(
+                queue, Tuple4Cmp((joined_size, joined_chunks, joined_sums))
+            )
             if next_idx > 0:
                 top_idx = next_idx - 1
                 top_size, top_sums, _ = sum_chunks[top_idx]
@@ -570,10 +592,16 @@ def _gen_broken_sums(sum_chunks):
                 assert rem == 0
                 assert joined_chunks & 1 << top_idx
                 assert joined_sums & top_sums == top_sums
-                heapq.heappush(queue, Tuple4Cmp((
-                    new_size, joined_chunks ^ 1 << top_idx,
-                    joined_sums ^ top_sums
-                )))
+                heapq.heappush(
+                    queue,
+                    Tuple4Cmp(
+                        (
+                            new_size,
+                            joined_chunks ^ 1 << top_idx,
+                            joined_sums ^ top_sums,
+                        )
+                    ),
+                )
         continue
 
 
@@ -599,15 +627,12 @@ _OrgTerms = typing.DefaultDict[
 
 _LEFT = 0
 _RIGHT = 1
-_OPPOS = {
-    _LEFT: _RIGHT,
-    _RIGHT: _LEFT
-}
+_OPPOS = {_LEFT: _RIGHT, _RIGHT: _LEFT}
 
 # For type annotation, actually is should be ``_LEFT | _RIGHT`` in Haskell
 # algebraic data type notation.
 
-_LR = typing.NewType('_LR', int)
+_LR = typing.NewType("_LR", int)
 
 _LRS = (_LEFT, _RIGHT)
 
@@ -620,12 +645,14 @@ class _LastStepIdxes(typing.NamedTuple):
     accessing the actual graph.
 
     """
+
     exts: typing.Tuple[_SrPairs, _SrPairs]
     sums: _SrPairs
 
 
 class _EdgeInfo(typing.NamedTuple):
     """Information about an edge on a constriction graph."""
+
     term: int
     eval_: _Prod
     coeff: Expr
@@ -639,11 +666,7 @@ class _BaseInfo:
     optimizer class.
     """
 
-    __slots__ = [
-        'count',
-        'base',
-        'node'
-    ]
+    __slots__ = ["count", "base", "node"]
 
     def __init__(self, base: _Base, node: _Prod):
         """Initialize the information.
@@ -681,20 +704,16 @@ class _VertInfo(typing.NamedTuple):
 
 
 class _Delta(object):
-    """Additional information about augmentation by a designated vertex.
-    """
+    """Additional information about augmentation by a designated vertex."""
 
-    __slots__ = [
-        'coeff',
-        'leading_coeff',
-        'terms',
-        'exc_cost',
-        'saving'
-    ]
+    __slots__ = ["coeff", "leading_coeff", "terms", "exc_cost", "saving"]
 
     def __init__(
-            self, coeff: Expr, leading_coeff: typing.Optional[Expr],
-            terms: int, exc_cost: Size
+        self,
+        coeff: Expr,
+        leading_coeff: typing.Optional[Expr],
+        terms: int,
+        exc_cost: Size,
     ):
         """Initialize the delta."""
         self.coeff = coeff
@@ -706,6 +725,7 @@ class _Delta(object):
 
 class _DesVert(typing.NamedTuple):
     """Vertices designated for a specific part."""
+
     part: int
     vert: int
 
@@ -730,14 +750,15 @@ _ConstrParts = typing.Tuple[_VertsWCoeff, _VertsWCoeff]
 
 class _Biclique(typing.NamedTuple):
     """A biclique to be yielded."""
+
     parts: _ConstrParts
     leading_coeff: Expr
     terms: int
     saving: Size
-    constr_graph: '_ConstrGraph'
+    constr_graph: "_ConstrGraph"
 
 
-def _biclique_tie_key(biclique: '_Biclique'):
+def _biclique_tie_key(biclique: "_Biclique"):
     """Order two equally profitable bicliques.
 
     Equal saving happens often, and the greedy loop then has a real choice to
@@ -756,9 +777,9 @@ def _biclique_tie_key(biclique: '_Biclique'):
     vert_key = biclique.constr_graph.vert_key
 
     def side(part):
-        return tuple(sorted(
-            (vert_key(vert), str(coeff)) for vert, coeff in part
-        ))
+        return tuple(
+            sorted((vert_key(vert), str(coeff)) for vert, coeff in part)
+        )
 
     return (
         -biclique.terms.bit_count(),
@@ -794,19 +815,19 @@ def _get_cost_coeffs(last_step_idxes: _LastStepIdxes) -> _CostCoeffs:
 
     ext_size = get_total_size(itertools.chain.from_iterable(exts))
 
-    final = _get_prod_final_cost(
-        ext_size, get_total_size(sums)
-    ) + ext_size
+    final = _get_prod_final_cost(ext_size, get_total_size(sums)) + ext_size
 
     preps = (
         get_total_size(itertools.chain(exts[0], sums)),
-        get_total_size(itertools.chain(exts[1], sums))
+        get_total_size(itertools.chain(exts[1], sums)),
     )  # Explicitly repeated for linter.
 
     return _CostCoeffs(final=final, preps=preps)
 
 
-class _VertGross(typing.Dict[typing.Tuple[int, int], typing.Tuple[Size, Size]]):
+class _VertGross(
+    typing.Dict[typing.Tuple[int, int], typing.Tuple[Size, Size]]
+):
     """Gross saving of vertices.
 
     Given any numbers of vertices in the two parts, the gross saving of an
@@ -815,16 +836,14 @@ class _VertGross(typing.Dict[typing.Tuple[int, int], typing.Tuple[Size, Size]]):
 
     """
 
-    __slots__ = [
-        '_cost_coeffs'
-    ]
+    __slots__ = ["_cost_coeffs"]
 
     def __init__(self, last_step_idxes: _LastStepIdxes):
         """Initialize the dictionary."""
         self._cost_coeffs = _get_cost_coeffs(last_step_idxes)
 
     @property
-    def cost_coeffs(self) -> '_CostCoeffs':
+    def cost_coeffs(self) -> "_CostCoeffs":
         """The cost coefficients behind the gross savings."""
         return self._cost_coeffs
 
@@ -861,7 +880,7 @@ class _BronKerbosch:
     """
 
     def __init__(
-            self, last_step_idxes: _LastStepIdxes, constr_graph: '_ConstrGraph'
+        self, last_step_idxes: _LastStepIdxes, constr_graph: "_ConstrGraph"
     ):
         """Initialize the iterator."""
 
@@ -943,9 +962,10 @@ class _BronKerbosch:
         # run, which the numbering did not.
         vert_key = self._constr_graph.vert_key
         self._rank = {
-            vert: rank for rank, vert in enumerate(sorted(
-                {i.vert for i in subg}, key=lambda v: (vert_key(v), v)
-            ))
+            vert: rank
+            for rank, vert in enumerate(
+                sorted({i.vert for i in subg}, key=lambda v: (vert_key(v), v))
+            )
         }
 
         # For random constriction, if a biclique has ever been yielded.
@@ -997,7 +1017,8 @@ class _BronKerbosch:
             for j in (0, avail_r):
                 gain = (
                     final * (curr_l * j + curr_r * i + i * j)
-                    - preps[0] * i - preps[1] * j
+                    - preps[0] * i
+                    - preps[1] * j
                 )
                 if best is None or gain > best:
                     best = gain
@@ -1010,7 +1031,9 @@ class _BronKerbosch:
         return sorted(verts, key=lambda v: (v.part, rank[v.vert]))
 
     def _expand(
-            self, subg: _DesVertsWDelta, cand: _DesVerts,
+        self,
+        subg: _DesVertsWDelta,
+        cand: _DesVerts,
     ):
         """Generate the bicliques from the current state.
 
@@ -1040,9 +1063,11 @@ class _BronKerbosch:
 
         # Redundant check on biclique size is used to skip the possibly
         # expansive saving comparison.
-        if_profitable = all(
-            i > 0 for i in n_verts
-        ) and any(i > 1 for i in n_verts) and curr_saving >= 0
+        if_profitable = (
+            all(i > 0 for i in n_verts)
+            and any(i > 1 for i in n_verts)
+            and curr_saving >= 0
+        )
 
         # The two parts of a biclique are interchangeable, so each one would
         # otherwise be generated twice.  Keep only the orientation whose first
@@ -1065,9 +1090,8 @@ class _BronKerbosch:
             # `<=` admits both, and the two are then the same biclique so the
             # caller taking the best of them is unharmed.
             rank = self._rank
-            if_oriented = (
-                min(rank[i[0]] for i in curr[0])
-                <= min(rank[i[0]] for i in curr[1])
+            if_oriented = min(rank[i[0]] for i in curr[0]) <= min(
+                rank[i[0]] for i in curr[1]
             )
 
         if if_maximal and if_profitable and if_oriented:
@@ -1080,9 +1104,11 @@ class _BronKerbosch:
             if self._best_saving is None or curr_saving > self._best_saving:
                 self._best_saving = curr_saving
             yield _Biclique(
-                parts=curr, leading_coeff=self._leading_coeff,
-                terms=self._terms, saving=curr_saving,
-                constr_graph=self._constr_graph
+                parts=curr,
+                leading_coeff=self._leading_coeff,
+                terms=self._terms,
+                saving=curr_saving,
+                constr_graph=self._constr_graph,
             )
 
         if self._yielded and self._opt.rand_constr:
@@ -1260,8 +1286,7 @@ class _BronKerbosch:
             continue
 
     def _update_delta(
-            self, new_v: _DesVert, new_d: _Delta,
-            curr_v: _DesVert, curr_d: _Delta
+        self, new_v: _DesVert, new_d: _Delta, curr_v: _DesVert, curr_d: _Delta
     ) -> typing.Optional[_Delta]:
         """Update the delta assuming a new node is added to the stack.
 
@@ -1281,29 +1306,31 @@ class _BronKerbosch:
         curr_leading_coeff = curr_d.leading_coeff
 
         updated_d = _Delta(
-            coeff=curr_coeff, leading_coeff=curr_leading_coeff,
-            terms=curr_terms, exc_cost=curr_d.exc_cost
+            coeff=curr_coeff,
+            leading_coeff=curr_leading_coeff,
+            terms=curr_terms,
+            exc_cost=curr_d.exc_cost,
         )
 
         if new_p == curr_p:
             if new_leading_coeff is not None:
                 assert curr_leading_coeff is not None
                 updated_d.coeff = (
-                        curr_leading_coeff / new_leading_coeff
+                    curr_leading_coeff / new_leading_coeff
                 ).simplify()
                 updated_d.leading_coeff = None
         else:
-
             new_neighb = self._constr_graph.graph[new_v.vert]
             curr_vert = curr_v.vert
             if curr_vert not in new_neighb:
                 return None
-            edge = new_neighb[curr_vert]['info']
+            edge = new_neighb[curr_vert]["info"]
 
             edge_term = 1 << edge.term
             if_conflict = (
-                    edge_term & new_terms != 0 or edge_term & curr_terms != 0 or
-                    edge_term & self._terms != 0
+                edge_term & new_terms != 0
+                or edge_term & curr_terms != 0
+                or edge_term & self._terms != 0
             )
             if if_conflict:
                 return None
@@ -1315,9 +1342,7 @@ class _BronKerbosch:
 
             if new_leading_coeff is not None:
                 # The previous node gives the first edge.
-                updated_d.coeff = (
-                        edge_coeff / new_leading_coeff
-                ).simplify()
+                updated_d.coeff = (edge_coeff / new_leading_coeff).simplify()
             elif self._leading_coeff is None:
                 # This node gives the first edge.
                 updated_d.leading_coeff = edge_coeff
@@ -1346,7 +1371,7 @@ class _ConstrGraph:
     """
 
     def __init__(
-            self, constr_graphs: '_ConstrGraphs', exts_l: int, exts_r: int
+        self, constr_graphs: "_ConstrGraphs", exts_l: int, exts_r: int
     ):
         """Initialize the constriction graph.
 
@@ -1381,9 +1406,7 @@ class _ConstrGraph:
     @property
     def verts(self):
         """The nodes in the graph as integers with the information."""
-        return (
-            (i, j) for i, j in self.graph.nodes(data='info')
-        )
+        return ((i, j) for i, j in self.graph.nodes(data="info"))
 
     def vert_key(self, vert: int):
         """The sort key of the canonical content of a vertex.
@@ -1398,13 +1421,16 @@ class _ConstrGraph:
         keys = self._vert_keys
         if vert in keys:
             return keys[vert]
-        key = self.graph.nodes[vert]['info'].canon.sort_key
+        key = self.graph.nodes[vert]["info"].canon.sort_key
         keys[vert] = key
         return key
 
     def add_edge(
-            self, node_infos: typing.Tuple[_VertInfo, _VertInfo],
-            coeff: Expr, term: int, eval_: _Prod
+        self,
+        node_infos: typing.Tuple[_VertInfo, _VertInfo],
+        coeff: Expr,
+        term: int,
+        eval_: _Prod,
     ):
         """Add a new edge to the graph."""
 
@@ -1448,17 +1474,16 @@ class _ConstrGraph:
             # It is possible that two evaluations actually the same be
             # recorded twice in the evaluation of product nodes because of
             # symmetry.
-            assert neighb1[n2]['info'].term == edge_info.term
+            assert neighb1[n2]["info"].term == edge_info.term
         else:
             graph.add_edge(*nodes, info=edge_info)
 
         self.terms |= 1 << term
 
     def get_opt_biclique(
-            self, last_step_idxes: _LastStepIdxes
+        self, last_step_idxes: _LastStepIdxes
     ) -> typing.Tuple[typing.Optional[Size], typing.Optional[_Biclique]]:
-        """Get the optimal biclique in the current graph.
-        """
+        """Get the optimal biclique in the current graph."""
 
         if self._opt_saving is not None:
             if self._opt_saving is False:
@@ -1471,7 +1496,6 @@ class _ConstrGraph:
         opt_key = None
 
         for biclique in _BronKerbosch(last_step_idxes, self):
-
             saving = biclique.saving
 
             # The key is only needed on a tie, and it is not cheap, so it is
@@ -1491,8 +1515,8 @@ class _ConstrGraph:
 
             if better:
                 opt_saving = saving
-                opt_key = key if key is not None else _biclique_tie_key(
-                    biclique
+                opt_key = (
+                    key if key is not None else _biclique_tie_key(biclique)
                 )
                 # Make copy only when we need them.
                 parts = biclique.parts
@@ -1500,8 +1524,9 @@ class _ConstrGraph:
                 opt_biclique = _Biclique(
                     parts=(list(parts[0]), list(parts[1])),
                     leading_coeff=biclique.leading_coeff,
-                    terms=biclique.terms, saving=biclique.saving,
-                    constr_graph=biclique.constr_graph
+                    terms=biclique.terms,
+                    saving=biclique.saving,
+                    constr_graph=biclique.constr_graph,
                 )
 
             continue
@@ -1527,13 +1552,12 @@ class _ConstrGraph:
 
         if self.terms & terms != 0:
             edges2remove = [
-                (n1, n2) for n1, n2, info in graph.edges(data='info')
+                (n1, n2)
+                for n1, n2, info in graph.edges(data="info")
                 if 1 << info.term & terms != 0
             ]
             graph.remove_edges_from(edges2remove)
-            nodes2remove = [
-                i for i in graph.nodes() if graph.degree(i) == 0
-            ]
+            nodes2remove = [i for i in graph.nodes() if graph.degree(i) == 0]
             graph.remove_nodes_from(nodes2remove)
 
             self.terms ^= self.terms & terms
@@ -1568,13 +1592,9 @@ class _ConstrGraphs(typing.Dict[_LastStepIdxes, _ConstrGraph]):
 
     """
 
-    __slots__ = [
-        'opt',
-        'bases',
-        'term_bases'
-    ]
+    __slots__ = ["opt", "bases", "term_bases"]
 
-    def __init__(self, opt: '_Optimizer'):
+    def __init__(self, opt: "_Optimizer"):
         """Initialize the graphs.
 
         Here only the most basic resource initialization is performed.
@@ -1588,18 +1608,18 @@ class _ConstrGraphs(typing.Dict[_LastStepIdxes, _ConstrGraph]):
         # None for plain scalar terms.
         self.term_bases: typing.List[typing.Optional[_BaseInfo]] = []
 
-    def get_opt_biclique(self) -> typing.Tuple[
+    def get_opt_biclique(
+        self,
+    ) -> typing.Tuple[
         typing.Optional[_LastStepIdxes], typing.Optional[_Biclique]
     ]:
-        """Choose the most profitable biclique.
-        """
+        """Choose the most profitable biclique."""
 
         opt_saving = None
         opt_last_step_idxes = None
         opt_biclique = None
         opt_key = None
         for last_step_idxes, constr_graph in self.items():
-
             curr_opt_saving, curr_opt_biclique = constr_graph.get_opt_biclique(
                 last_step_idxes
             )
@@ -1622,8 +1642,10 @@ class _ConstrGraphs(typing.Dict[_LastStepIdxes, _ConstrGraph]):
 
             if better:
                 opt_saving = curr_opt_saving
-                opt_key = key if key is not None else _biclique_tie_key(
-                    curr_opt_biclique
+                opt_key = (
+                    key
+                    if key is not None
+                    else _biclique_tie_key(curr_opt_biclique)
                 )
                 opt_last_step_idxes = last_step_idxes
                 opt_biclique = curr_opt_biclique
@@ -1669,9 +1691,20 @@ class _Optimizer:
     #
 
     def __init__(
-            self, computs, substs, interm_fmt,
-            contr_strat, opt_sum, repeated_terms_strat, opt_symm, req_an_opt,
-            greedy_cutoff, drop_cutoff, rand_constr, remove_shallow, stats
+        self,
+        computs,
+        substs,
+        interm_fmt,
+        contr_strat,
+        opt_sum,
+        repeated_terms_strat,
+        opt_symm,
+        req_an_opt,
+        greedy_cutoff,
+        drop_cutoff,
+        rand_constr,
+        remove_shallow,
+        stats,
     ):
         """Initialize the optimizer."""
 
@@ -1687,9 +1720,7 @@ class _Optimizer:
         self._excl = set()
 
         # Read, process, and verify user input.
-        self._grist = [
-            self._form_grain(comput, substs) for comput in computs
-        ]
+        self._grist = [self._form_grain(comput, substs) for comput in computs]
 
         # Dummies stock in terms of the substituted range.
         assert self._drudge is not None
@@ -1725,8 +1756,7 @@ class _Optimizer:
         self._res = None
 
     def optimize(self, res_at_end=True):
-        """Optimize the evaluation of the given computations.
-        """
+        """Optimize the evaluation of the given computations."""
 
         if self._res is not None:
             return self._res
@@ -1739,7 +1769,7 @@ class _Optimizer:
         self._res = self._linearize(res_nodes, res_at_end=res_at_end)
 
         if self.stats is not None:
-            self.stats['Number of nodes'] = len(self._interms_canon)
+            self.stats["Number of nodes"] = len(self._interms_canon)
 
         return self._res
 
@@ -1748,16 +1778,15 @@ class _Optimizer:
     #
 
     def _form_grain(self, comput, substs):
-        """Form grain for a given computation.
-        """
+        """Form grain for a given computation."""
 
         curr_drudge = comput.rhs.drudge
         if self._drudge is None:
             self._drudge = curr_drudge
         elif self._drudge is not curr_drudge:
             raise ValueError(
-                'Invalid computations to optimize, containing two drudges',
-                (self._drudge, curr_drudge)
+                "Invalid computations to optimize, containing two drudges",
+                (self._drudge, curr_drudge),
             )
         else:
             pass
@@ -1771,7 +1800,7 @@ class _Optimizer:
         for term in comput.rhs_terms:
             if not term.is_scalar:
                 raise ValueError(
-                    'Invalid term to optimize', term, 'expecting scalar'
+                    "Invalid term to optimize", term, "expecting scalar"
                 )
             sums = self._proc_sums(term.sums, substs, sort=True)
             amp = term.amp
@@ -1784,7 +1813,8 @@ class _Optimizer:
 
         return _Grain(
             base=comput.base if len(exts) == 0 else comput.base.args[0],
-            exts=exts, terms=terms
+            exts=exts,
+            terms=terms,
         )
 
     def _proc_sums(self, sums, substs, sort=False):
@@ -1796,7 +1826,6 @@ class _Optimizer:
 
         res = []
         for symb, range_ in sums:
-
             new_range, range_var = form_sized_range(range_, substs)
 
             if range_var is not None:
@@ -1804,8 +1833,12 @@ class _Optimizer:
                     self._range_var = range_var
                 elif self._range_var != range_var:
                     raise ValueError(
-                        'Invalid range', range_, 'unexpected symbol',
-                        range_var, 'conflicting with', self._range_var
+                        "Invalid range",
+                        range_,
+                        "unexpected symbol",
+                        range_var,
+                        "conflicting with",
+                        self._range_var,
                     )
                 else:
                     pass
@@ -1814,8 +1847,9 @@ class _Optimizer:
                 self._input_ranges[new_range] = range_
             elif range_.size != self._input_ranges[new_range].size:
                 raise ValueError(
-                    'Invalid ranges', (range_, self._input_ranges[new_range]),
-                    'duplicated labels'
+                    "Invalid ranges",
+                    (range_, self._input_ranges[new_range]),
+                    "duplicated labels",
                 )
             else:
                 pass
@@ -1833,10 +1867,9 @@ class _Optimizer:
     #
 
     def _linearize(
-            self, optimized: typing.Sequence[_EvalNode], res_at_end=True
+        self, optimized: typing.Sequence[_EvalNode], res_at_end=True
     ) -> typing.List[TensorDef]:
-        """Linearize optimized forms of the evaluation.
-        """
+        """Linearize optimized forms of the evaluation."""
 
         for node in optimized:
             self._set_n_refs(node)
@@ -1858,17 +1891,16 @@ class _Optimizer:
         return self._finalize(itertools.chain(interms, res))
 
     def _set_n_refs(self, node: _EvalNode):
-        """Set reference counts from an evaluation node.
-        """
+        """Set reference counts from an evaluation node."""
 
         if len(node.evals) == 0:
             self._optimize(node)
 
         # We need to find an evaluation with optimal cost.
         assert len(node.evals) > 0
-        node.evals = [next(
-            i for i in node.evals if i.total_cost == node.total_cost
-        )]
+        node.evals = [
+            next(i for i in node.evals if i.total_cost == node.total_cost)
+        ]
         eval_ = node.evals[0]
 
         if isinstance(eval_, _Prod):
@@ -1933,19 +1965,15 @@ class _Optimizer:
         eval_ = node.evals[0]
         assert isinstance(eval_, _Prod)
         term, deps = self._form_prod_def_term(eval_)
-        return _Grain(
-            base=node.base, exts=exts, terms=[term]
-        ), deps
+        return _Grain(base=node.base, exts=exts, terms=[term]), deps
 
     def _form_prod_def_term(self, eval_: _Prod):
-        """Form the term in the final definition of a product evaluation node.
-        """
+        """Form the term in the final definition of a product evaluation node."""
 
         amp = eval_.coeff
 
         deps = []
         for factor in eval_.factors:
-
             ref = self._parse_interm_ref(factor)
             if ref is not None:
                 assert ref.coeff == 1
@@ -1977,7 +2005,6 @@ class _Optimizer:
         sum_terms = []
         self._inline_sum_terms(eval_.sum_terms, sum_terms)
         for term in sum_terms:
-
             ref = self._parse_interm_ref(term)
             if ref is None:
                 terms.append(Term((), term, ()))
@@ -2006,8 +2033,11 @@ class _Optimizer:
                 # Switch back to evaluation node for using the facilities for
                 # product nodes.
                 tmp_node = _Prod(
-                    term_node.base, exts, term.sums,
-                    ref.coeff * term_coeff, factors
+                    term_node.base,
+                    exts,
+                    term.sums,
+                    ref.coeff * term_coeff,
+                    factors,
                 )
                 new_term, term_deps = self._form_prod_def_term(tmp_node)
 
@@ -2015,18 +2045,14 @@ class _Optimizer:
                 deps.extend(term_deps)
 
             else:
-                terms.append(Term(
-                    (), term, ()
-                ))
+                terms.append(Term((), term, ()))
                 deps.append(ref.base)
             continue
 
-        return _Grain(
-            base=node.base, exts=exts, terms=terms
-        ), deps
+        return _Grain(base=node.base, exts=exts, terms=terms), deps
 
     def _inline_sum_terms(
-            self, sum_terms: typing.Sequence[Expr], res: typing.List[Expr]
+        self, sum_terms: typing.Sequence[Expr], res: typing.List[Expr]
     ):
         """Inline the summation terms from single-reference terms.
 
@@ -2046,20 +2072,18 @@ class _Optimizer:
             eval_ = node.evals[0]
 
             if_inline = isinstance(eval_, _Sum) and (
-                    node.n_refs == 1 or len(eval_.sum_terms) == 1
+                node.n_refs == 1 or len(eval_.sum_terms) == 1
             )
             if if_inline:
                 if len(node.exts) == 0:
                     substs = None
                 else:
-                    substs = {
-                        i[0]: j for i, j in zip(eval_.exts, ref.indices)
-                    }
+                    substs = {i[0]: j for i, j in zip(eval_.exts, ref.indices)}
 
                 proced_sum_terms = [
-                    (
-                        i.xreplace(substs) if substs is not None else sum_term
-                    ) * ref.coeff for i in eval_.sum_terms
+                    (i.xreplace(substs) if substs is not None else sum_term)
+                    * ref.coeff
+                    for i in eval_.sum_terms
                 ]
                 self._inline_sum_terms(proced_sum_terms, res)
                 continue
@@ -2072,14 +2096,16 @@ class _Optimizer:
     def _is_input(self, node: _EvalNode):
         """Test if a product node is just a trivial reference to an input."""
         if isinstance(node, _Prod):
-            return len(node.sums) == 0 and len(node.factors) == 1 and (
-                    self._parse_interm_ref(node.factors[0]) is None
+            return (
+                len(node.sums) == 0
+                and len(node.factors) == 1
+                and (self._parse_interm_ref(node.factors[0]) is None)
             )
         else:
             return False
 
     def _finalize(
-            self, computs: typing.Iterable[_Grain]
+        self, computs: typing.Iterable[_Grain]
     ) -> typing.List[TensorDef]:
         """Finalize the linearization result.
 
@@ -2109,9 +2135,11 @@ class _Optimizer:
             base = comput.base if if_scalar else IndexedBase(comput.base)
 
             terms = [
-                i.map(proc_amp, sums=tuple(
-                    (s, self._input_ranges[r]) for s, r in i.sums
-                )) for i in comput.terms
+                i.map(
+                    proc_amp,
+                    sums=tuple((s, self._input_ranges[r]) for s, r in i.sums),
+                )
+                for i in comput.terms
             ]
 
             # No internal intermediates should be leaked.
@@ -2119,28 +2147,37 @@ class _Optimizer:
                 assert not any(j in self._interms for j in i.free_vars)
 
             if comput.base in self._interms:
-
                 if_shallow = (
-                        remove_shallow and len(terms) == 1
-                        and len(terms[0].sums) == 0
+                    remove_shallow
+                    and len(terms) == 1
+                    and len(terms[0].sums) == 0
                 )
                 if if_shallow:
                     # Remove shallow intermediates.  The saving might be too
                     # modest to justify the additional memory consumption.
                     #
                     # TODO: Move it earlier to a better place.
-                    repl_lhs = base if if_scalar else base[tuple(
-                        _WILD_FACTORY[i] for i, _ in enumerate(exts)
-                    )]
-                    repl_rhs = proc_amp(terms[0].amp.xreplace(
-                        {v[0]: _WILD_FACTORY[i] for i, v in enumerate(exts)}
-                    ))
+                    repl_lhs = (
+                        base
+                        if if_scalar
+                        else base[
+                            tuple(_WILD_FACTORY[i] for i, _ in enumerate(exts))
+                        ]
+                    )
+                    repl_rhs = proc_amp(
+                        terms[0].amp.xreplace(
+                            {
+                                v[0]: _WILD_FACTORY[i]
+                                for i, v in enumerate(exts)
+                            }
+                        )
+                    )
                     repls.append((repl_lhs, repl_rhs))
                     continue  # No new intermediate added.
 
-                final_base = (
-                    Symbol if if_scalar else IndexedBase
-                )(self.interm_fmt.format(next_idx))
+                final_base = (Symbol if if_scalar else IndexedBase)(
+                    self.interm_fmt.format(next_idx)
+                )
                 next_idx += 1
                 substs[base] = final_base
                 if_interm = True
@@ -2162,11 +2199,10 @@ class _Optimizer:
     #
 
     def _get_next_internal(self):
-        """Get the symbol for the next internal intermediate.
-        """
+        """Get the symbol for the next internal intermediate."""
         idx = self._next_internal_idx
         self._next_internal_idx += 1
-        return Symbol('gristmillInternalIntermediate{}'.format(idx))
+        return Symbol("gristmillInternalIntermediate{}".format(idx))
 
     @staticmethod
     def _write_in_orig_ranges(sums):
@@ -2174,9 +2210,7 @@ class _Optimizer:
 
         The labels in the ranges are assumed to be decorated.
         """
-        return tuple(
-            (i, j.replace_label(j.label[0])) for i, j in sums
-        )
+        return tuple((i, j.replace_label(j.label[0])) for i, j in sums)
 
     def _canon_terms(self, new_sums: _SrPairs, terms: typing.Iterable[Term]):
         """Form a canonical label for a list of terms.
@@ -2211,9 +2245,9 @@ class _Optimizer:
             factors, coeff = term.get_amp_factors(self._interms)
             coeffs.append(coeff)
 
-            candidates[
-                term.map(lambda x: prod_(factors))
-            ].append((canon_sums, idx))
+            candidates[term.map(lambda x: prod_(factors))].append(
+                (canon_sums, idx)
+            )
             continue
 
         # Poor man's canonicalization of external indices.
@@ -2224,24 +2258,26 @@ class _Optimizer:
         #
         # TODO: Fix it!
 
-        chosen = min(candidates.items(), key=lambda x: (
-            len(x[1]), -len(x[0].amp.atoms(Symbol) & new_dumms),
-            x[0].sort_key
-        ))
+        chosen = min(
+            candidates.items(),
+            key=lambda x: (
+                len(x[1]),
+                -len(x[0].amp.atoms(Symbol) & new_dumms),
+                x[0].sort_key,
+            ),
+        )
 
         canon_new_sums = set(i for i, _ in chosen[1])
         if len(canon_new_sums) > 1:
             warnings.warn(
-                'Internal deficiency: '
-                'summation intermediate may not be fully canonicalized'
+                "Internal deficiency: "
+                "summation intermediate may not be fully canonicalized"
             )
         # This could also fail when the chosen term has symmetry among the new
         # summations not present in any other term.  This can be hard to check.
 
         canon_new_sum = canon_new_sums.pop()
-        preferred = prod_(
-            coeffs[i] for _, i in candidates[chosen[0]]
-        )
+        preferred = prod_(coeffs[i] for _, i in candidates[chosen[0]])
         canon_coeff = _get_canon_coeff(coeffs, preferred)
 
         res_terms = []
@@ -2251,9 +2287,11 @@ class _Optimizer:
             res_terms.append(canon_term.map(lambda x: x / canon_coeff))
             continue
 
-        return canon_coeff, tuple(
-            sorted(res_terms, key=lambda x: x.sort_key)
-        ), canon_new_sum
+        return (
+            canon_coeff,
+            tuple(sorted(res_terms, key=lambda x: x.sort_key)),
+            canon_new_sum,
+        )
 
     def _canon_term(self, new_sums, term, fix_new=False):
         """Canonicalize a single term.
@@ -2261,16 +2299,24 @@ class _Optimizer:
         Internal method for _canon_terms, not supposed to be directly called.
         """
 
-        term = Term(tuple(itertools.chain(
-            (
-                (v[0], v[1].replace_label((v[1].label[0], _EXT, i)))
-                for i, v in enumerate(new_sums)
-            ) if fix_new else new_sums,
-            (
-                (i, j.replace_label((j.label, _SUMMED)))
-                for i, j in term.sums
-            )
-        )), term.amp, ())
+        term = Term(
+            tuple(
+                itertools.chain(
+                    (
+                        (v[0], v[1].replace_label((v[1].label[0], _EXT, i)))
+                        for i, v in enumerate(new_sums)
+                    )
+                    if fix_new
+                    else new_sums,
+                    (
+                        (i, j.replace_label((j.label, _SUMMED)))
+                        for i, j in term.sums
+                    ),
+                )
+            ),
+            term.amp,
+            (),
+        )
         canoned = term.canon(symms=self._drudge.symms.value)
 
         canon_sums = canoned.sums
@@ -2299,13 +2345,12 @@ class _Optimizer:
                 i_new += 1
             continue
 
-        return dumm_reset.map(sums=tuple(itertools.chain(
-            term_new_sums, term_sums
-        ))), tuple(canon_new_sums)
+        return dumm_reset.map(
+            sums=tuple(itertools.chain(term_new_sums, term_sums))
+        ), tuple(canon_new_sums)
 
     def _parse_interm_ref(self, expr: Expr) -> typing.Optional[_IntermRef]:
-        """Parse an expression that is possibly an intermediate reference.
-        """
+        """Parse an expression that is possibly an intermediate reference."""
 
         coeff = _UNITY
         base = None
@@ -2333,8 +2378,12 @@ class _Optimizer:
             else:
                 coeff *= i
 
-        return None if base is None else _IntermRef(
-            coeff=coeff, base=base, indices=indices, power=power
+        return (
+            None
+            if base is None
+            else _IntermRef(
+                coeff=coeff, base=base, indices=indices, power=power
+            )
         )
 
     def _get_content(self, interm_ref: Expr) -> typing.List[Term]:
@@ -2383,16 +2432,16 @@ class _Optimizer:
 
         substs, excl = node.get_substs(indices)
 
-        term = Term(
-            node.sums, node.coeff * prod_(node.factors), ()
-        ).reset_dumms(
-            self._dumms, excl=self._excl | excl
-        )[0].map(lambda x: x.xreplace(substs))
+        term = (
+            Term(node.sums, node.coeff * prod_(node.factors), ())
+            .reset_dumms(self._dumms, excl=self._excl | excl)[0]
+            .map(lambda x: x.xreplace(substs))
+        )
 
         return [term]
 
     def _raise_power(
-            self, terms: typing.Sequence[Term], exp: int
+        self, terms: typing.Sequence[Term], exp: int
     ) -> typing.List[Term]:
         """Raise the sum of the given terms to the given power."""
         curr = []  # type: typing.List[Term]
@@ -2401,10 +2450,14 @@ class _Optimizer:
                 curr = list(terms)
             else:
                 # TODO: Make the multiplication more efficient.
-                curr = [i.mul_term(
-                    j, dumms=self._dumms,
-                    excl=self._excl | i.free_vars | j.free_vars
-                ) for i, j in itertools.product(curr, terms)]
+                curr = [
+                    i.mul_term(
+                        j,
+                        dumms=self._dumms,
+                        excl=self._excl | i.free_vars | j.free_vars,
+                    )
+                    for i, j in itertools.product(curr, terms)
+                ]
         return curr
 
     #
@@ -2423,12 +2476,10 @@ class _Optimizer:
 
         if len(terms) == 0:
             raise ValueError(
-                'Tensor is constant zero, probably it is not what you meant',
-                grain.base
+                "Tensor is constant zero, probably it is not what you meant",
+                grain.base,
             )
-        return self._form_sum_from_terms(
-            grain.base, exts, terms
-        )
+        return self._form_sum_from_terms(grain.base, exts, terms)
 
     def _optimize(self, node):
         """Optimize the evaluation of the given node.
@@ -2457,15 +2508,12 @@ class _Optimizer:
         """
 
         decored_exts = tuple(
-            (i, j.replace_label((j.label, _EXT)))
-            for i, j in exts
+            (i, j.replace_label((j.label, _EXT))) for i, j in exts
         )
         n_exts = len(decored_exts)
         term = Term(tuple(sums), prod_(factors).simplify(), ())
 
-        coeff, key, canon_exts = self._canon_terms(
-            decored_exts, [term]
-        )
+        coeff, key, canon_exts = self._canon_terms(decored_exts, [term])
         assert len(key) == 1
 
         if key in self._interms_canon:
@@ -2481,25 +2529,21 @@ class _Optimizer:
             # The external symbols will automatically be considered in
             # get_amp_factors since they are in the summation list right now.
             key_factors, key_coeff = key_term.get_amp_factors(self._interms)
-            interm = _Prod(
-                base, key_exts, key_sums, key_coeff, key_factors
-            )
+            interm = _Prod(base, key_exts, key_sums, key_coeff, key_factors)
             self._interms[base] = interm
 
         return _Interm(
             ref=coeff * _index(base, canon_exts, strip=True),
-            node=self._interms[base]
+            node=self._interms[base],
         )
 
     def _form_sum_interm(
-            self, exts: _SrPairs, terms: typing.Sequence[Term]
+        self, exts: _SrPairs, terms: typing.Sequence[Term]
     ) -> _Interm:
-        """Form a sum intermediate.
-        """
+        """Form a sum intermediate."""
 
         decored_exts = tuple(
-            (i, j.replace_label((j.label, _EXT)))
-            for i, j in exts
+            (i, j.replace_label((j.label, _EXT))) for i, j in exts
         )
         n_exts = len(decored_exts)
 
@@ -2528,11 +2572,11 @@ class _Optimizer:
 
         return _Interm(
             ref=coeff * _index(base, canon_exts, strip=True),
-            node=self._interms[base]
+            node=self._interms[base],
         )
 
     def _form_sum_from_terms(
-            self, base: Symbol, exts: _SrPairs, terms: typing.Iterable[Term]
+        self, base: Symbol, exts: _SrPairs, terms: typing.Iterable[Term]
     ):
         """Form a summation node for given the terms.
 
@@ -2577,16 +2621,13 @@ class _Optimizer:
             old_terms = self._optimize_common_symmtrization(old_terms, exts)
 
         res_terms = scalars + old_terms + new_terms
-        sum_node.evals = [_Sum(
-            sum_node.base, sum_node.exts, res_terms
-        )]
+        sum_node.evals = [_Sum(sum_node.base, sum_node.exts, res_terms)]
         return
 
-    def _organize_sum_terms(self, terms: typing.Iterable[Expr]) -> typing.Tuple[
-        typing.List[Expr], typing.List[Expr], _OrgTerms
-    ]:
-        """Organize terms in the summation node.
-        """
+    def _organize_sum_terms(
+        self, terms: typing.Iterable[Expr]
+    ) -> typing.Tuple[typing.List[Expr], typing.List[Expr], _OrgTerms]:
+        """Organize terms in the summation node."""
 
         # Intermediate base -> (indices -> coefficient)
         #
@@ -2614,17 +2655,14 @@ class _Optimizer:
             for indices, coeff in v.items():
                 coeff = coeff.simplify()
                 if coeff != 0:
-                    res_terms.append(
-                        _index(k, indices) * coeff
-                    )
+                    res_terms.append(_index(k, indices) * coeff)
 
             continue
 
         return plain_scalars, res_terms, org_terms
 
     def _optimize_common_symmtrization(self, terms, exts):
-        """Optimize common symmetrization in the intermediate references.
-        """
+        """Optimize common symmetrization in the intermediate references."""
 
         res_terms = []
         exts_dict = dict(exts)
@@ -2634,14 +2672,11 @@ class _Optimizer:
         # Indices, coeffs tuple -> base, coeff
         pull_info = collections.defaultdict(list)
         for k, v in org_terms.items():
-
             if len(v) == 0:
                 assert False
             elif len(v) == 1:
                 indices, coeff = v.popitem()
-                res_terms.append(
-                    _index(k, indices) * coeff
-                )
+                res_terms.append(_index(k, indices) * coeff)
             else:
                 # Here we use name for sorting directly, since here we cannot
                 # have general expressions hence no need to use the expensive
@@ -2649,9 +2684,9 @@ class _Optimizer:
                 raw = list(v.items())  # Indices/coefficient pairs.
                 raw.sort(key=lambda x: [i.name for i in x[0]])
                 leading_coeff = raw[0][1]
-                pull_info[tuple(
-                    (i, j / leading_coeff) for i, j in raw
-                )].append((k, leading_coeff))
+                pull_info[
+                    tuple((i, j / leading_coeff) for i, j in raw)
+                ].append((k, leading_coeff))
 
         # Now we treat the terms from which new intermediates might be pulled
         # out.
@@ -2665,9 +2700,7 @@ class _Optimizer:
                 pivot_ref = _index(base, pivot) * coeff
             else:
                 # We need to form an intermediate here.
-                interm_exts = tuple(
-                    (i, exts_dict[i]) for i in pivot
-                )
+                interm_exts = tuple((i, exts_dict[i]) for i in pivot)
                 interm_terms = [
                     term.scale(coeff)
                     for base, coeff in v
@@ -2680,23 +2713,16 @@ class _Optimizer:
                 self._optimize(interm_node)
 
             for indices, coeff in k:
-                substs = {
-                    i: j for i, j in zip(pivot, indices)
-                }
-                res_terms.append(
-                    pivot_ref.xreplace(substs) * coeff
-                )
+                substs = {i: j for i, j in zip(pivot, indices)}
+                res_terms.append(pivot_ref.xreplace(substs) * coeff)
                 continue
 
             continue
 
         return res_terms
 
-    def constr_sum(
-            self, terms: typing.Sequence[Expr], exts: _SrPairs
-    ):
-        """Constrict the summations greedily.
-        """
+    def constr_sum(self, terms: typing.Sequence[Expr], exts: _SrPairs):
+        """Constrict the summations greedily."""
 
         if_untouched = (1 << len(terms)) - 1
         new_terms = []
@@ -2704,14 +2730,13 @@ class _Optimizer:
         constr_graphs = self._form_constr_graphs(terms, exts)
 
         while True:
-
             last_step_idxes, biclique = constr_graphs.get_opt_biclique()
             if last_step_idxes is None:
                 break
 
-            new_terms.append(self._form_constred_term(
-                last_step_idxes, biclique
-            ))
+            new_terms.append(
+                self._form_constred_term(last_step_idxes, biclique)
+            )
             if_untouched = constr_graphs.cleanup_constred(
                 if_untouched, biclique
             )
@@ -2725,7 +2750,7 @@ class _Optimizer:
         return new_terms, untouched_terms
 
     def _form_constr_graphs(
-            self, terms: typing.Sequence[Expr], exts: _SrPairs
+        self, terms: typing.Sequence[Expr], exts: _SrPairs
     ) -> _ConstrGraphs:
         """Form the constriction graphs for the terms.
 
@@ -2777,11 +2802,14 @@ class _Optimizer:
         return constr_graphs
 
     def _aug_constr_graphs_4_eval(
-            self, res: _ConstrGraphs, term_idx: int, ref: _IntermRef,
-            eval_: _Prod, exts: _SrPairs
+        self,
+        res: _ConstrGraphs,
+        term_idx: int,
+        ref: _IntermRef,
+        eval_: _Prod,
+        exts: _SrPairs,
     ):
-        """Augment the constriction graphs for an evaluation.
-        """
+        """Augment the constriction graphs for an evaluation."""
 
         if len(eval_.factors) < 2:
             return
@@ -2793,16 +2821,16 @@ class _Optimizer:
 
         ext_symbs = {i for i, _ in eval_.exts}
 
-        factors, coeff = eval_term.get_amp_factors(
-            self._interms, ext_symbs
-        )
+        factors, coeff = eval_term.get_amp_factors(self._interms, ext_symbs)
         coeff *= ref.coeff
         assert len(factors) == 2
         assert factors[0] != factors[1]
 
-        sums = tuple(sorted(
-            eval_term.sums, key=lambda x: (x[1], default_sort_key(x[0]))
-        ))
+        sums = tuple(
+            sorted(
+                eval_term.sums, key=lambda x: (x[1], default_sort_key(x[0]))
+            )
+        )
 
         excl = set(self._excl)
         excl.update(ext_symbs)
@@ -2816,12 +2844,10 @@ class _Optimizer:
             content = content[0]
 
             symbs = f_i.atoms(Symbol)
-            exts_idxes = tuple(
-                i for i, v in enumerate(exts) if v[0] in symbs
+            exts_idxes = tuple(i for i, v in enumerate(exts) if v[0] in symbs)
+            exts_int = functools.reduce(
+                operator.or_, (1 << i for i in exts_idxes), 0
             )
-            exts_int = functools.reduce(operator.or_, (
-                1 << i for i in exts_idxes
-            ), 0)
 
             for i, _ in sums:
                 assert i in symbs
@@ -2832,18 +2858,16 @@ class _Optimizer:
                 self._dumms, excl=excl | content.free_vars
             )[0]
 
-            _, canon_coeff = canon.get_amp_factors(
-                self._interms, ext_symbs
-            )
-            canon = canon.map(
-                lambda x: x / canon_coeff, skip_vecs=True
-            )
+            _, canon_coeff = canon.get_amp_factors(self._interms, ext_symbs)
+            canon = canon.map(lambda x: x / canon_coeff, skip_vecs=True)
             coeff *= canon_coeff
 
-            factor_infos.append((
-                tuple(exts[i] for i in exts_idxes),
-                _VertInfo(exts=exts_int, expr=f_i, canon=canon)
-            ))
+            factor_infos.append(
+                (
+                    tuple(exts[i] for i in exts_idxes),
+                    _VertInfo(exts=exts_int, expr=f_i, canon=canon),
+                )
+            )
             continue
 
         factor_infos.sort(key=lambda x: x[1].exts)
@@ -2862,13 +2886,15 @@ class _Optimizer:
 
         constr_graph.add_edge(
             (factor_infos[0][1], factor_infos[1][1]),
-            coeff=coeff, term=term_idx, eval_=eval_
+            coeff=coeff,
+            term=term_idx,
+            eval_=eval_,
         )
 
         return
 
     def _form_constred_term(
-            self, last_step_idxes: _LastStepIdxes, biclique: _Biclique
+        self, last_step_idxes: _LastStepIdxes, biclique: _Biclique
     ) -> Expr:
         """Form the factored term for the given constriction."""
 
@@ -2877,9 +2903,7 @@ class _Optimizer:
         # Form and optimize the two new summation nodes.
         factors = [biclique.leading_coeff]
         for exts_i, part_i in zip(last_step_idxes.exts, biclique.parts):
-            scaled_terms = [
-                verts[i]['info'].canon.scale(j) for i, j in part_i
-            ]
+            scaled_terms = [verts[i]["info"].canon.scale(j) for i, j in part_i]
 
             exts = tuple(itertools.chain(exts_i, last_step_idxes.sums))
 
@@ -2895,10 +2919,12 @@ class _Optimizer:
             continue
 
         # Form the contraction node for the two new summation nodes.
-        exts = tuple(sorted(
-            set(itertools.chain.from_iterable(last_step_idxes.exts)),
-            key=lambda x: default_sort_key(x[0])
-        ))
+        exts = tuple(
+            sorted(
+                set(itertools.chain.from_iterable(last_step_idxes.exts)),
+                key=lambda x: default_sort_key(x[0]),
+            )
+        )
         expr, eval_node = self._form_prod_interm(
             exts, last_step_idxes.sums, factors
         )
@@ -2914,8 +2940,7 @@ class _Optimizer:
     #
 
     def _optimize_prod(self, prod_node):
-        """Optimize the product evaluation node.
-        """
+        """Optimize the product evaluation node."""
 
         # This function should not be called on an already-optimized node.
         assert len(prod_node.evals) == 0
@@ -2950,7 +2975,7 @@ class _Optimizer:
         factors_with = collections.defaultdict(list)
         for i, v in enumerate(factors):
             for dim in sorted(
-                    dumm2dim[j] for j in v.atoms(Symbol) if j in dumm2dim
+                dumm2dim[j] for j in v.atoms(Symbol) if j in dumm2dim
             ):
                 factors_with[dim].append(i)
                 continue
@@ -2978,9 +3003,9 @@ class _Optimizer:
             for i in dims_in_chunk:
                 total_size *= dims[cat][i][1].size
                 continue
-            dim_chunks.append(Tuple4Cmp((
-                (cat, total_size), dims_in_chunk, fs)
-            ))
+            dim_chunks.append(
+                Tuple4Cmp(((cat, total_size), dims_in_chunk, fs))
+            )
             continue
         dim_chunks.sort()
         # Now the dimension chunks finally got their index for libparenth.
@@ -3008,8 +3033,7 @@ class _Optimizer:
             assert 0
 
         if_inclusive = (
-                contr_strat == ContrStrat.TRAV or
-                contr_strat == ContrStrat.EXHAUST
+            contr_strat == ContrStrat.TRAV or contr_strat == ContrStrat.EXHAUST
         )
 
         #
@@ -3023,12 +3047,13 @@ class _Optimizer:
         # Translate the result back.
         #
         # Here a small memoir is used to cache the result.
-        get_orig_dims = functools.partial(self._get_orig_dims, dims, dim_chunks)
+        get_orig_dims = functools.partial(
+            self._get_orig_dims, dims, dim_chunks
+        )
         interms: typing.Dict[typing.Tuple[int, ...], _Interm] = {}
 
         def form_interm(factor_idxes) -> _Interm:
-            """Form the intermediate for parenthesizing the given factors.
-            """
+            """Form the intermediate for parenthesizing the given factors."""
 
             if factor_idxes in interms:
                 return interms[factor_idxes]
@@ -3089,8 +3114,7 @@ class _Optimizer:
 
             # Translation from the current dummy symbol to the canonical symbol.
             to_canon = {
-                i: j[0]
-                for i, j in zip(target_ref.indices, target_node.exts)
+                i: j[0] for i, j in zip(target_ref.indices, target_node.exts)
             }
             # Here the sum indices in the evaluation is going to be renamed
             # according the to sum indices in the target node, since they are
@@ -3124,15 +3148,15 @@ class _Optimizer:
                 for curr_dumm, range_ in eval_sums:
                     new_dumm = canon_sum_dumms[range_][sum_idx[range_]]
                     sum_idx[range_] += 1
-                    res_sums.append((
-                        new_dumm, range_
-                    ))
+                    res_sums.append((new_dumm, range_))
                     to_canon[curr_dumm] = new_dumm
 
                 eval_node = _Prod(
-                    target_node.base, target_node.exts, res_sums,
+                    target_node.base,
+                    target_node.exts,
+                    res_sums,
                     (coeff / target_ref.coeff).xreplace(to_canon),
-                    [i.xreplace(to_canon) for i in fs]
+                    [i.xreplace(to_canon) for i in fs],
                 )
                 eval_node.total_cost = eval_.cost
 
@@ -3170,8 +3194,9 @@ class _Optimizer:
 
 
 def verify_eval_seq(
-        eval_seq: typing.Sequence[TensorDef], res: typing.Sequence[TensorDef],
-        simplify=False
+    eval_seq: typing.Sequence[TensorDef],
+    res: typing.Sequence[TensorDef],
+    simplify=False,
 ) -> bool:
     """Verify the correctness of an evaluation sequence for the results.
 
@@ -3208,9 +3233,7 @@ def verify_eval_seq(
     for idx, eval_ in enumerate(eval_seq):
         base = eval_.base
         free_vars = eval_.rhs.free_vars
-        curr_defs = [
-            defs_dict[i] for i in free_vars if i in defs_dict
-        ]
+        curr_defs = [defs_dict[i] for i in free_vars if i in defs_dict]
         exts = {i for i, _ in eval_.exts}
         rhs = eval_.rhs.subst_all(curr_defs, simplify=simplify, excl=exts)
         new_def = TensorDef(base, eval_.exts, rhs)
@@ -3234,17 +3257,19 @@ def verify_eval_seq(
             ref_exts = [i for i, _ in ref.exts]
             if len(new_exts) != len(ref_exts):
                 raise ValueError(
-                    'Unequal number of external indices for ', base,
-                    new_exts, ref_exts
+                    "Unequal number of external indices for ",
+                    base,
+                    new_exts,
+                    ref_exts,
                 )
 
-            new_res = new_def if new_exts == ref_exts else new_def[
-                tuple(ref_exts)
-            ]
+            new_res = (
+                new_def if new_exts == ref_exts else new_def[tuple(ref_exts)]
+            )
 
             diff = (new_res - ref.rhs).simplify()
             if diff != 0:
-                raise ValueError('Unequal definition for ', base)
+                raise ValueError("Unequal definition for ", base)
             del res_dict[base]
         else:
             # For intermediates.
@@ -3255,8 +3280,6 @@ def verify_eval_seq(
         continue
 
     if len(res_dict) != 0:
-        raise ValueError(
-            'Computation not given for', list(res_dict.keys())
-        )
+        raise ValueError("Computation not given for", list(res_dict.keys()))
 
     return True
