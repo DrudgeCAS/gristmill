@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/DrudgeCAS/gristmill/compare/gristmill-v0.9.0...gristmill-v0.9.1) (2026-09-03)
+
+
+### Dependencies
+
+* **deps:** bump tornado from 6.5.7 to 6.5.8 ([b0c2ebe](https://github.com/DrudgeCAS/gristmill/commit/b0c2ebe10491e6b0db3105e7d5880be585810bd7))
+
 ## [0.9.0](https://github.com/DrudgeCAS/gristmill/compare/gristmill-v0.8.0...gristmill-v0.9.0) (2026-08-17)
 
 
