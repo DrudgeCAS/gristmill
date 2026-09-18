@@ -4,6 +4,7 @@ import abc
 import collections
 import functools
 import itertools
+import string
 import types
 import typing
 
@@ -204,11 +205,20 @@ class BasePrinter(abc.ABC):
     base_indent
         The base level of indentation for the base level.
 
+    comments
+        If a comment giving the term in Einstein summation notation, like
+        ``tau(a, i) += 2 * f(i, j) * t(a, j)``, is to be put before the code
+        evaluating each term, for the printers making use of it.  The comment
+        syntax is given by the ``COMMENT_PREFIX`` attribute of the printers.
+
     kwargs
         All the keyword arguments are forwarded to :py:class:`utils.JinjaEnv`
         constructor.
 
     """
+
+    #: The prefix for comment lines in the target language.
+    COMMENT_PREFIX = "#"
 
     def __init__(
         self,
@@ -216,6 +226,7 @@ class BasePrinter(abc.ABC):
         indexed_proc_cb=lambda x, p: None,
         extr_unary=True,
         base_indent=1,
+        comments=True,
         **kwargs,
     ):
         """Initialize a base printer."""
@@ -227,6 +238,51 @@ class BasePrinter(abc.ABC):
         self._indexed_proc = indexed_proc_cb
         self._extr_unary = extr_unary
         self._base_indent = base_indent
+        self._comments = comments
+
+    def form_term_comment(self, ctx, term) -> typing.Optional[str]:
+        """Form the comment describing the evaluation of a term.
+
+        The term is written in the Einstein summation convention with the
+        indexed quantities in mathematical form, for instance ``tau(a, i) += 2
+        * f(i, j) * t(a, j)``.  None is returned when comments are disabled.
+        """
+
+        if not self._comments:
+            return None
+
+        def indexed(base, indices):
+            """Form the mathematical form of an indexed quantity."""
+            if len(indices) == 0:
+                return base.strip()
+            return "{}({})".format(
+                base.strip(), ", ".join(i.index.strip() for i in indices)
+            )
+
+        factors = [indexed(i.base, i.indices) for i in term.indexed_factors]
+        factors.extend(i.strip() for i in term.other_factors)
+
+        numerator = term.numerator.strip()
+        denominator = term.denominator.strip()
+        parts = [] if numerator == "1" else [numerator]
+        parts.extend(factors)
+        rhs = " * ".join(parts) if len(parts) > 0 else "1"
+        if denominator != "1":
+            rhs = "{} / {}".format(rhs, denominator)
+
+        return "{} {} {} {}".format(
+            self.COMMENT_PREFIX,
+            indexed(ctx.base, ctx.indices),
+            "+=" if term.phase == "+" else "-=",
+            rhs,
+        )
+
+    def _with_comment(self, ctx, term, code):
+        """Prepend the comment for the term to the given code."""
+        comment = self.form_term_comment(ctx, term)
+        if comment is None or code is None:
+            return code
+        return "{}\n{}".format(comment, code)
 
     #
     # Translation to rendering contexts
@@ -951,6 +1007,218 @@ def mangle_base(func):
 
 
 #
+# Block storage of input tensors
+# ------------------------------
+#
+
+
+class BlockSpec:
+    """Specification of the block storage of input tensors.
+
+    Tensors like the two-body interaction are frequently stored in blocks
+    according to the ranges of their indices, like ``u_ovvv`` for the block with
+    the first index in the occupied range and the rest in the virtual range,
+    rather than as a whole.  This class describes how the appearances of such
+    tensors are to be printed and how the blocks are to be formed.
+
+    Parameters
+    ----------
+
+    bases
+        The bases of the tensors stored in blocks, given as indexed bases or
+        their names.
+
+    name_fmt
+        The format for the name of a block, with ``{base}`` for the name of the
+        original tensor and ``{blocks}`` for the concatenation of the labels of
+        the ranges of the indices.
+
+    range_labels
+        A mapping from ranges, or their labels, to the labels to be used for
+        them in block names.  By default, the lower-cased label of the range is
+        used.
+
+    src_fmt
+        The format for the expression forming a block from the full tensor,
+        with ``{base}`` and ``{blocks}`` as above and ``{slices}`` for the
+        comma-separated slices of the ranges of the indices.  By default, the
+        block is sliced from the full tensor.  When it is set to None, the
+        blocks are considered to be given as inputs and no code is generated
+        for their formation or release.
+
+    """
+
+    def __init__(
+        self,
+        bases,
+        name_fmt="{base}_{blocks}",
+        range_labels=None,
+        src_fmt="{base}[{slices}]",
+    ):
+        """Initialize the specification."""
+
+        self.bases = {
+            str(i.label if isinstance(i, IndexedBase) else i) for i in bases
+        }
+        self.name_fmt = name_fmt
+        self.range_labels = {} if range_labels is None else dict(range_labels)
+        self.src_fmt = src_fmt
+
+    def get_label(self, range_: Range) -> str:
+        """Get the label for a range in block names."""
+
+        for key in [range_, range_.label]:
+            if key in self.range_labels:
+                return self.range_labels[key]
+            continue
+        return str(range_.label).lower()
+
+    def form_name(self, base: str, ranges: typing.Sequence[Range]) -> str:
+        """Form the name of the block for the given ranges."""
+
+        return self.name_fmt.format(
+            base=base, blocks="".join(self.get_label(i) for i in ranges)
+        )
+
+    def form_src(
+        self, base: str, ranges: typing.Sequence[Range], slices
+    ) -> str:
+        """Form the expression for the formation of a block."""
+
+        return self.src_fmt.format(
+            base=base,
+            blocks="".join(self.get_label(i) for i in ranges),
+            slices=", ".join(slices),
+        )
+
+
+def split_input_blocks(
+    eval_seq: typing.Iterable[TensorDef], spec: BlockSpec
+) -> typing.List[TensorDef]:
+    """Split input tensors in an evaluation sequence into blocks.
+
+    Each appearance of an input tensor covered by the given specification is
+    replaced by a block tensor named according to the ranges of its indices.
+    When the blocks are to be formed from the full tensor, a definition of each
+    block is added right before its first use, marked as an intermediate so
+    that it is released after its last use, and marked by the attribute
+    ``block`` holding the original base and the ranges of the indices.
+
+    Parameters
+    ----------
+
+    eval_seq
+        The evaluation sequence, as an iterable of tensor definitions.
+
+    spec
+        The specification of the block storage.
+
+    Returns
+    -------
+
+    The new evaluation sequence.
+
+    """
+
+    res = []
+    formed = {}  # From block names to their definitions.
+
+    for def_ in eval_seq:
+        terms = def_.rhs_terms
+        selected = [
+            sorted(
+                (
+                    i
+                    for i in term.amp.atoms(Indexed)
+                    if str(i.base.label) in spec.bases
+                ),
+                key=lambda i: i.sort_key(),
+            )
+            for term in terms
+        ]
+        if not any(selected):
+            res.append(def_)
+            continue
+        drudge = def_.rhs.drudge
+        resolvers = drudge.resolvers.value
+        dumms = drudge.dumms.value
+        exts = dict(def_.exts)
+
+        new_blocks = []  # In the order of first appearance.
+
+        def form_block(name, base, ranges):
+            """Form the definition of a new block."""
+            counts = collections.Counter()
+            block_exts = []
+            for range_ in ranges:
+                block_exts.append((dumms[range_][counts[range_]], range_))
+                counts[range_] += 1
+                continue
+            symbs = tuple(i for i, _ in block_exts)
+            block = TensorDef(
+                IndexedBase(name), block_exts, drudge.sum(base[symbs])
+            )
+            block.if_interm = True
+            block.block = types.SimpleNamespace(
+                base=str(base.label), ranges=tuple(ranges)
+            )
+            return block
+
+        new_terms = []
+        for term, indexed in zip(terms, selected):
+            if not indexed:
+                new_terms.append(term)
+                continue
+            indices_dict = dict(exts)
+            indices_dict.update(term.sums)
+            resolved = {}
+
+            def repl_indexed(*args):
+                """Replace an indexed quantity with its block."""
+                base = args[0]
+                indices = args[1:]
+                if str(base.label) not in spec.bases:
+                    return Indexed(*args)
+
+                for i in indices:
+                    if i not in resolved:
+                        resolved[i] = try_resolve_range(
+                            i, indices_dict, resolvers
+                        )
+                ranges = [resolved[i] for i in indices]
+                if any(i is None or not i.bounded for i in ranges):
+                    raise ValueError(
+                        "Unable to resolve bounded ranges for", Indexed(*args)
+                    )
+
+                name = spec.form_name(str(base.label), ranges)
+                if spec.src_fmt is not None and name not in formed:
+                    block = form_block(name, base, ranges)
+                    formed[name] = block
+                    new_blocks.append(block)
+
+                return IndexedBase(name)[indices]
+
+            new_amp = term.amp.xreplace(
+                {i: repl_indexed(*i.args) for i in indexed}
+            )
+            new_terms.append(Term(term.sums, new_amp, term.vecs))
+            continue
+
+        new_def = TensorDef(
+            def_.base, def_.exts, drudge.create_tensor(new_terms)
+        )
+        if hasattr(def_, "if_interm"):
+            new_def.if_interm = def_.if_interm
+
+        res.extend(new_blocks)
+        res.append(new_def)
+        continue
+
+    return res
+
+
+#
 # Naive imperative code printers
 # ------------------------------
 #
@@ -1142,7 +1410,7 @@ class NaiveCodePrinter(BasePrinter):
         ctx.term = event.term_ctx
         code = self.render("naiveterm", ctx)
         del ctx.term
-        return code
+        return self._with_comment(ctx, event.term_ctx, code)
 
 
 #
@@ -1164,6 +1432,8 @@ class CPrinter(NaiveCodePrinter):
     In this class, just some parameters for the C programming language is fixed
     relative to the base :py:class:`NaiveCodePrinter`.
     """
+
+    COMMENT_PREFIX = "//"
 
     def __init__(self, print_indexed_cb=print_c_indexed, **kwargs):
         """Initialize a C code printer.
@@ -1268,6 +1538,8 @@ class FortranPrinter(NaiveCodePrinter):
 
     """
 
+    COMMENT_PREFIX = "!"
+
     def __init__(
         self,
         print_indexed_cb=print_fortran_indexed,
@@ -1275,23 +1547,23 @@ class FortranPrinter(NaiveCodePrinter):
         default_type="real",
         heap_interm=True,
         explicit_bounds=False,
+        add_templ=None,
         **kwargs,
     ):
         """Initialize a naive Fortran code printer."""
 
+        templs = {}
         if openmp:
-            add_templ = {
-                "term_prelude": _FORTRAN_OMP_TERM_PRELUDE,
-                "term_finale": _FORTRAN_OMP_TERM_FINALE,
-            }
-        else:
-            add_templ = None
+            templs["term_prelude"] = _FORTRAN_OMP_TERM_PRELUDE
+            templs["term_finale"] = _FORTRAN_OMP_TERM_FINALE
+        if add_templ is not None:
+            templs.update(add_templ)
 
         super().__init__(
             FCodePrinter(settings={"source_format": "free"}),
             print_indexed_cb=print_indexed_cb,
             line_cont="&",
-            add_templ=add_templ,
+            add_templ=templs if len(templs) > 0 else None,
             **kwargs,
         )
 
@@ -1475,6 +1747,560 @@ _FORTRAN_OMP_TERM_FINALE = """\
 
 
 #
+# BLAS-based Fortran printer
+# --------------------------
+#
+
+_BLAS_OMP_TERM_PRELUDE = """\
+{% if n_exts > 0 %}
+!$omp parallel do schedule(static)
+{% elif (term.sums | length) > 0 %}
+!$omp parallel do schedule(static) reduction(+:{{ base }})
+{% endif %}
+"""
+
+_BLAS_OMP_TERM_FINALE = """\
+{% if (n_exts + (term.sums | length)) > 0 %}
+!$omp end parallel do
+{% endif %}
+"""
+
+
+class _GemmOperand:
+    """An operand of a GEMM call in the BLAS Fortran printer.
+
+    This is an internal helper holding the analysis of one indexed factor of a
+    binary contraction.
+    """
+
+    def __init__(self, factor, sums, exts, first):
+        """Analyse the factor.
+
+        Parameters
+        ----------
+
+        factor
+            The context of the indexed factor.
+
+        sums
+            The names of the summed indices.
+
+        exts
+            The names of the external indices of the target.
+
+        first
+            If the operand is the first operand of the GEMM, whose external
+            indices give the rows of the result.
+
+        """
+
+        self.factor = factor
+        self.first = first
+        self.indices = list(factor.indices)
+        self._index_ctxs = {i.index: i for i in self.indices}
+        self.names = [i.index for i in self.indices]
+
+        self.sum_pos = [i for i, v in enumerate(self.names) if v in sums]
+        self.ext_pos = [i for i, v in enumerate(self.names) if v in exts]
+        self.nat_sums = [self.names[i] for i in self.sum_pos]
+        self.nat_exts = [self.names[i] for i in self.ext_pos]
+
+        n_sums = len(self.sum_pos)
+        n_names = len(self.names)
+        sums_lead = self.sum_pos == list(range(n_sums))
+        sums_trail = self.sum_pos == list(range(n_names - n_sums, n_names))
+
+        # Natural transposition flag when the storage is usable directly.
+        if first:
+            self.nat_trans = (
+                "N" if sums_trail else ("T" if sums_lead else None)
+            )
+        else:
+            self.nat_trans = (
+                "N" if sums_lead else ("T" if sums_trail else None)
+            )
+
+        # To be decided by the planning.
+        self.copy = False
+        self.exts = self.nat_exts
+        self.sums = self.nat_sums
+
+    @property
+    def order(self):
+        """The index names in the storage order after possible copying."""
+        if not self.copy:
+            return self.names
+        elif self.first:
+            return self.exts + self.sums
+        else:
+            return self.sums + self.exts
+
+    @property
+    def trans(self):
+        """The transposition flag for the GEMM call."""
+        return "N" if self.copy else self.nat_trans
+
+    def index_ctx(self, name):
+        """Get the context of an index by its name."""
+        return self._index_ctxs[name]
+
+
+class BlasFortranPrinter(FortranPrinter):
+    """Fortran printer evaluating contractions by BLAS GEMM.
+
+    Terms which are contractions of exactly two indexed factors, where all
+    summed indices are shared by the two factors and all external indices come
+    from exactly one of them, are evaluated by a call to a GEMM routine, with
+    the factors viewed as matrices by grouping their indices into the external
+    and the summed ones.  In the column-major storage of Fortran, this view
+    needs no data movement when the summed indices are stored contiguously at
+    either end of the factor, so copies into contiguous temporaries are made
+    only for factors where this is not the case, for factors of inputs whose
+    storage does not match the ranges of their indices, or when the summed
+    indices are stored in different orders in the two factors.  When the
+    external indices of the result cannot be ordered as in the target, the
+    GEMM result is accumulated into the target by a permutation loop.  All other
+    terms are evaluated by the naive loops of :py:class:`FortranPrinter`.
+
+    The code for each GEMM term is wrapped in a Fortran ``block`` construct
+    holding its temporaries, which are released at its end.  Arrays are passed
+    to the GEMM routine by their first element, so the routine needs to be
+    external with an implicit interface, as the reference BLAS.
+
+    Parameters
+    ----------
+
+    gemm
+        The name of the GEMM routine.
+
+    one
+        The literal for the unity of the data type, used for the coefficients.
+
+    zero
+        The literal for the zero of the data type.
+
+    copy_inputs
+        Bases of input tensors whose storage does not match the ranges of
+        their indices, for instance tensors stored over the whole orbital
+        space while indexed by particle and hole indices.  Their factors are
+        always copied into contiguous temporaries before GEMM.
+
+    temp_prefix
+        The prefix for the names of the temporaries.
+
+    size_substs
+        Optional symbolic dimension substitutions used only to compare packing
+        traffic and temporary storage for alternative GEMM plans.  They do not
+        change the generated dimensions.  If costs cannot be compared
+        numerically, the original deterministic planning order is used.
+
+    openmp
+        If OpenMP parallelization is to be used.  Different from
+        :py:class:`FortranPrinter`, no parallel region is opened for the whole
+        computation, since the GEMM routine is expected to be threaded by
+        itself and would run serially inside a parallel region.  Instead, each
+        loop nest for copies, accumulations, and terms evaluated by loops gets
+        its own ``parallel do`` construct over its outermost loop.
+
+    All other options are the same as :py:class:`FortranPrinter`.  Note that
+    ``explicit_bounds`` needs to be set when the ranges do not start from
+    zero.
+
+    """
+
+    def __init__(
+        self,
+        gemm="dgemm",
+        one="1.0d0",
+        zero="0.0d0",
+        copy_inputs=(),
+        temp_prefix="gm_",
+        openmp=True,
+        add_templ=None,
+        size_substs=None,
+        **kwargs,
+    ):
+        """Initialize the printer."""
+
+        # The base printer is initialized without OpenMP, the loop-level
+        # parallelization is added here.
+        templs = {}
+        if openmp:
+            templs["term_prelude"] = _BLAS_OMP_TERM_PRELUDE
+            templs["term_finale"] = _BLAS_OMP_TERM_FINALE
+        if add_templ is not None:
+            templs.update(add_templ)
+        super().__init__(openmp=False, add_templ=templs or None, **kwargs)
+        self._omp_loops = openmp
+
+        self._gemm = gemm
+        self._one = one
+        self._zero = zero
+        self._copy_inputs = {
+            str(i.label if isinstance(i, IndexedBase) else i)
+            for i in copy_inputs
+        }
+        self._temp_prefix = temp_prefix
+        self._size_substs = {} if size_substs is None else dict(size_substs)
+
+    def print_comp_term(self, event: CompTerm):
+        """Print the evaluation of a term, by GEMM when possible."""
+
+        ctx = event.comput.ctx
+        term = event.term_ctx
+
+        operands = self._plan_gemm(ctx, term)
+        if operands is None:
+            return super().print_comp_term(event)
+
+        return self._with_comment(
+            ctx, term, self._print_gemm(ctx, term, operands)
+        )
+
+    def _plan_gemm(self, ctx, term):
+        """Plan the GEMM evaluation of a term.
+
+        None is returned when the term cannot be evaluated by GEMM.
+        """
+
+        factors = term.indexed_factors
+        if len(factors) != 2 or len(term.other_factors) != 0:
+            return None
+        # Only plain indexed tensors, not functions of them from the unary
+        # extraction, can be given to GEMM.
+        if any(
+            not isinstance(i.base_expr, (Symbol, IndexedBase)) for i in factors
+        ):
+            return None
+
+        exts = [i.index for i in ctx.indices]
+        sums = [i.index for i in term.sums]
+        names = [[i.index for i in f.indices] for f in factors]
+        all_names = names[0] + names[1]
+
+        for i in names:
+            if len(set(i)) != len(i):
+                return None  # Repeated index within a factor.
+            continue
+        if any(all_names.count(i) != 1 for i in exts):
+            return None
+        if any(names[0].count(i) != 1 or names[1].count(i) != 1 for i in sums):
+            return None
+        if set(all_names) != set(sums) | set(exts):
+            return None
+        for f in factors:
+            for i in f.indices:
+                if i.range is None or not i.range.bounded:
+                    return None
+                continue
+            continue
+
+        # The first operand is the one whose external indices lead in the
+        # target, when there is one.
+        ext_sets = [{i for i in j if i in exts} for j in names]
+        if set(exts[: len(ext_sets[0])]) == ext_sets[0]:
+            first, second = 0, 1
+        elif set(exts[: len(ext_sets[1])]) == ext_sets[1]:
+            first, second = 1, 0
+        else:
+            first, second = 0, 1
+
+        candidates = []
+        for left, right in [(first, second), (second, first)]:
+            for sum_source in [0, 1]:
+                for align_exts in [False, True]:
+                    candidates.append(
+                        self._plan_operands(
+                            factors[left],
+                            factors[right],
+                            sums,
+                            exts,
+                            sum_source,
+                            align_exts,
+                        )
+                    )
+        scores = [self._score_operands(i, exts) for i in candidates]
+        if all(i is not None for i in scores):
+            return candidates[min(range(len(scores)), key=scores.__getitem__)]
+        # Without comparable sizes, retain the original deterministic plan.
+        return candidates[0]
+
+    def _plan_operands(self, left, right, sums, exts, sum_source, align_exts):
+        """Plan one operand order and choice of contracted-index order."""
+        op1 = _GemmOperand(left, sums, exts, first=True)
+        op2 = _GemmOperand(right, sums, exts, first=False)
+
+        for op in [op1, op2]:
+            forced = op.factor.base in self._copy_inputs
+            op.copy = forced or op.nat_trans is None
+            continue
+
+        # External indices of copied operands follow the target.
+        n_ext1 = len(op1.nat_exts)
+        if set(exts[:n_ext1]) == set(op1.nat_exts):
+            target_exts = [exts[:n_ext1], exts[n_ext1:]]
+        else:
+            target_exts = [op1.nat_exts, op2.nat_exts]
+        for op, i in zip([op1, op2], target_exts):
+            if align_exts and op.nat_exts != list(i):
+                op.copy = True
+            if op.copy:
+                op.exts = list(i)
+            continue
+
+        # Summed indices need the same order in the two operands.
+        if op1.copy and op2.copy:
+            sum_order = list(sums)
+        elif op1.copy:
+            sum_order = op2.nat_sums
+        elif op2.copy:
+            sum_order = op1.nat_sums
+        elif op1.nat_sums != op2.nat_sums:
+            source, packed = (op1, op2) if sum_source == 0 else (op2, op1)
+            packed.copy = True
+            packed.exts = list(target_exts[1 - sum_source])
+            sum_order = source.nat_sums
+        else:
+            sum_order = op1.nat_sums
+        op1.sums = list(sum_order)
+        op2.sums = list(sum_order)
+
+        return op1, op2
+
+    def _score_operands(self, operands, exts):
+        """Estimate extra element traffic, then peak temporary storage."""
+        op1, op2 = operands
+        packed = sum(
+            (
+                prod_(i.size_expr for i in op.indices)
+                for op in operands
+                if op.copy
+            ),
+            Integer(0),
+        )
+        result = Integer(0)
+        if op1.exts + op2.exts != exts or not exts:
+            result = prod_(
+                op.index_ctx(i).size_expr for op in operands for i in op.exts
+            )
+        costs = (2 * packed + 3 * result, packed + result)
+        values = tuple(i.subs(self._size_substs) for i in costs)
+        if any(
+            i.is_number is not True
+            or i.is_nonnegative is not True
+            or i.is_finite is not True
+            for i in values
+        ):
+            return None
+        return values
+
+    def _print_gemm(self, ctx, term, operands):
+        """Print the GEMM evaluation of a term."""
+
+        op1, op2 = operands
+        exts = [i.index for i in ctx.indices]
+        ext_ctxs = {i.index: i for i in ctx.indices}
+        indent = self._env.form_indent
+        type_ = self._default_type
+        prefix = self._temp_prefix
+
+        res_order = op1.exts + op2.exts
+        direct = res_order == exts and len(exts) > 0
+
+        decls = []
+        body = []
+        finale = []
+
+        # Copies of the operands.
+        for idx, op in enumerate([op1, op2]):
+            if not op.copy:
+                continue
+            name = "{}{}".format(prefix, idx + 1)
+            order_ctxs = [op.index_ctx(i) for i in op.order]
+            decls.append(
+                "{}, allocatable :: {}({})".format(
+                    type_, name, ", ".join(":" for _ in order_ctxs)
+                )
+            )
+            body.append(
+                "allocate({}({}))".format(
+                    name, self._form_temp_bounds(order_ctxs)
+                )
+            )
+            body.append(
+                self._form_par_loops(
+                    order_ctxs,
+                    "{} = {}".format(
+                        self._print_indexed(name, order_ctxs),
+                        self._print_indexed(op.factor.base, op.indices),
+                    ),
+                )
+            )
+            finale.append("deallocate({})".format(name))
+            continue
+
+        # The target of the GEMM.
+        if direct:
+            c_name = ctx.base
+            c_ref = self._form_elem_ref(ctx.base, ctx.indices, temp=False)
+            beta = self._one
+        else:
+            c_name = "{}c".format(prefix)
+            if len(exts) == 0:
+                res_ctxs = []
+                decls.append("{} :: {}(1)".format(type_, c_name))
+                c_ref = "{}(1)".format(c_name)
+            else:
+                res_ctxs = [ext_ctxs[i] for i in res_order]
+                decls.append(
+                    "{}, allocatable :: {}({})".format(
+                        type_, c_name, ", ".join(":" for _ in res_ctxs)
+                    )
+                )
+                body.append(
+                    "allocate({}({}))".format(
+                        c_name, self._form_temp_bounds(res_ctxs)
+                    )
+                )
+                finale.append("deallocate({})".format(c_name))
+                c_ref = self._form_elem_ref(c_name, res_ctxs, temp=True)
+            beta = self._zero
+
+        # The GEMM call.
+        m = self._form_size(op1.exts, op1)
+        n = self._form_size(op2.exts, op2)
+        k = self._form_size(op1.sums, op1)
+        lda = "max(1, {})".format(m if op1.trans == "N" else k)
+        ldb = "max(1, {})".format(k if op2.trans == "N" else n)
+        refs = []
+        for idx, op in enumerate([op1, op2]):
+            if op.copy:
+                name = "{}{}".format(prefix, idx + 1)
+                order_ctxs = [op.index_ctx(i) for i in op.order]
+                refs.append(self._form_elem_ref(name, order_ctxs, temp=True))
+            else:
+                refs.append(
+                    self._form_elem_ref(op.factor.base, op.indices, temp=False)
+                )
+            continue
+
+        alpha = self._form_alpha(term)
+        body.append(
+            "call {}('{}', '{}', {}, {}, {}, {}, &".format(
+                self._gemm, op1.trans, op2.trans, m, n, k, alpha
+            )
+        )
+        body.append(
+            "{}{}, {}, {}, {}, {}, {}, {})".format(
+                indent(1),
+                refs[0],
+                lda,
+                refs[1],
+                ldb,
+                beta,
+                c_ref,
+                "max(1, {})".format(m),
+            )
+        )
+
+        # Accumulation of a temporary result into the target.
+        if not direct:
+            if len(exts) == 0:
+                body.append("{0} = {0} + {1}(1)".format(ctx.base, c_name))
+            else:
+                target_ctxs = list(ctx.indices)
+                body.append(
+                    self._form_par_loops(
+                        target_ctxs,
+                        "{0} = {0} + {1}".format(
+                            self._print_indexed(ctx.base, target_ctxs),
+                            self._print_indexed(c_name, res_ctxs),
+                        ),
+                    )
+                )
+
+        # Skip empty contractions before allocation or first-element access.
+        guard = "if (({}) > 0 .and. ({}) > 0 .and. ({}) > 0) then".format(
+            m, n, k
+        )
+        lines = ["block"]
+        lines.extend(indent(1) + i for i in decls)
+        lines.append(indent(1) + guard)
+        for i in itertools.chain(body, finale):
+            lines.extend(indent(2) + j for j in i.split("\n"))
+            continue
+        lines.append(indent(1) + "end if")
+        lines.append("end block")
+        return "\n".join(lines)
+
+    #
+    # Utilities for GEMM printing.
+    #
+
+    def _form_par_loops(self, index_ctxs, body):
+        """Form a loop nest with the given body, parallelized when enabled.
+
+        The body is indented to the innermost level.  With OpenMP enabled, the
+        outermost loop is distributed among the threads; the loop variables of
+        the inner loops are private by the Fortran rules of OpenMP.
+        """
+
+        n_loops = len(index_ctxs)
+        lines = []
+        if self._omp_loops and n_loops > 0:
+            lines.append("!$omp parallel do schedule(static)")
+        lines.append(self._form_loop_opens(index_ctxs))
+        lines.append(self._env.form_indent(n_loops) + body)
+        lines.append(self._form_loop_closes(index_ctxs))
+        if self._omp_loops and n_loops > 0:
+            lines.append("!$omp end parallel do")
+        return "\n".join(i for i in lines if i != "")
+
+    def _form_temp_bounds(self, index_ctxs):
+        """Form the explicit bounds for a temporary."""
+        return ", ".join(
+            "{}:{}".format(self._print_lower(i.lower_expr), i.upper.strip())
+            for i in index_ctxs
+        )
+
+    def _form_elem_ref(self, name, index_ctxs, temp):
+        """Form the reference to the first element of an array.
+
+        Temporaries always have explicit bounds, other arrays only when
+        explicit bounds are enabled for the printer.
+        """
+
+        if len(index_ctxs) == 0:
+            return name
+        if temp or self._explicit_bounds:
+            lows = [self._print_lower(i.lower_expr) for i in index_ctxs]
+        else:
+            lows = ["1" for _ in index_ctxs]
+        return "{}({})".format(name, ", ".join(lows))
+
+    def _form_size(self, names, op):
+        """Form the product of the sizes of the ranges of the given indices."""
+        return self._print_scal(
+            prod_(op.index_ctx(i).size_expr for i in names)
+        ).strip()
+
+    def _form_alpha(self, term):
+        """Form the alpha coefficient of the GEMM call from the term."""
+
+        numerator = term.numerator.strip()
+        denominator = term.denominator.strip()
+        if numerator == "1" and denominator == "1":
+            alpha = self._one
+        else:
+            alpha = "{}*{}".format(numerator, self._one)
+            if denominator != "1":
+                alpha = "{}/{}".format(alpha, denominator)
+        if term.phase == "-":
+            alpha = "-({})".format(alpha)
+        return alpha
+
+
+#
 # Einsum printer
 # --------------
 #
@@ -1499,6 +2325,15 @@ class EinsumPrinter(BasePrinter):
     einsum
         The name of the einsum function.
 
+    blocks
+        The specification of input tensors stored in blocks, as a
+        :py:class:`BlockSpec` or an iterable of bases to be used with the
+        default specification.  With it, appearances of these tensors are
+        printed as their blocks according to the ranges of the indices, with
+        the blocks formed from the full tensors before their first use and
+        released after their last use.  The ranges of the blocks need to have
+        distinct lower bounds for the slicing to be meaningful.
+
     """
 
     def __init__(
@@ -1508,6 +2343,7 @@ class EinsumPrinter(BasePrinter):
         einsum="einsum",
         extr_unary=True,
         add_globals=None,
+        blocks=None,
         **kwargs,
     ):
         """Initialize the printer."""
@@ -1527,6 +2363,61 @@ class EinsumPrinter(BasePrinter):
         self._default_type = default_type
         self._einsum = einsum
 
+        if blocks is None or isinstance(blocks, BlockSpec):
+            self._blocks = blocks
+        else:
+            self._blocks = BlockSpec(blocks)
+
+    def doprint(self, eval_seq, separate_decls=False):
+        """Make full printing of the evaluation steps.
+
+        When block storage is specified, the input tensors are split into
+        blocks by :py:func:`split_input_blocks` before the printing.
+        """
+
+        if self._blocks is not None:
+            eval_seq = split_input_blocks(eval_seq, self._blocks)
+            self._check_block_ranges(eval_seq)
+
+        return super().doprint(eval_seq, separate_decls=separate_decls)
+
+    @staticmethod
+    def _check_block_ranges(eval_seq):
+        """Check the ranges in blocks to have distinct lower bounds.
+
+        Slicing is ambiguous only when different ranges can appear in the same
+        axis of the same tensor, like the occupied and virtual ranges of the
+        two-body interaction.  Ranges confined to different axes, like a boson
+        range and an orbital range, are free to share bounds.
+        """
+
+        axes = collections.defaultdict(set)
+        for def_ in eval_seq:
+            if not hasattr(def_, "block"):
+                continue
+            for pos, range_ in enumerate(def_.block.ranges):
+                axes[(def_.block.base, pos)].add(range_)
+                continue
+            continue
+
+        for (base, pos), ranges in axes.items():
+            lowers = {}
+            for range_ in ranges:
+                lower = range_.lower
+                if lower in lowers:
+                    raise ValueError(
+                        "Ranges",
+                        lowers[lower],
+                        range_,
+                        "in axis {} of {} have the same lower bound, "
+                        "slicing is ambiguous".format(pos, base),
+                    )
+                lowers[lower] = range_
+                continue
+            continue
+
+        return
+
     def print_decl(self, event: TensorDecl):
         """Do nothing."""
         return None
@@ -1537,8 +2428,14 @@ class EinsumPrinter(BasePrinter):
         return preamble
 
     def print_before_comp(self, event: BeforeComp):
-        """Initialize the tensor to zero."""
+        """Initialize the tensor to zero, or form the block of an input."""
         ctx = event.comput.ctx
+
+        block = getattr(ctx.orig_def, "block", None)
+        if block is not None:
+            slices = ["{}:{}".format(i.lower, i.upper) for i in ctx.indices]
+            src = self._blocks.form_src(block.base, block.ranges, slices)
+            return "{} = {}".format(ctx.base, src)
 
         if len(ctx.indices) > 0:
             shape = "({})".format(", ".join(i.size for i in ctx.indices))
@@ -1557,14 +2454,74 @@ class EinsumPrinter(BasePrinter):
         return "{} = {}".format(ctx.base, rhs)
 
     def print_comp_term(self, event: CompTerm):
-        """Print the evaluation of a term to be added to the target."""
+        """Print the evaluation of a term to be added to the target.
+
+        Blocks of inputs are formed in whole before the computation, so nothing
+        is printed for their terms.
+        """
 
         ctx = event.comput.ctx
+        if hasattr(ctx.orig_def, "block"):
+            return None
+
         ctx.term = event.term_ctx
+        ctx.term.einsum_spec = self._form_einsum_spec(ctx, ctx.term)
+        ctx.term.direct_expr = None
+        factors = ctx.term.indexed_factors
+        if (
+            len(factors) == 1
+            and not ctx.term.sums
+            and not ctx.term.other_factors
+            and isinstance(factors[0].base_expr, (Symbol, IndexedBase))
+        ):
+            source = [i.index for i in factors[0].indices]
+            target = [i.index for i in ctx.indices]
+            if (
+                source
+                and len(set(source)) == len(source)
+                and len(target) == len(source)
+                and set(source) == set(target)
+            ):
+                # A pure permutation is a view, not a contraction.  Accumulate
+                # into the separately initialized output; never modify the view.
+                axes = tuple(source.index(i) for i in target)
+                ctx.term.direct_expr = factors[0].base
+                if source != target:
+                    ctx.term.direct_expr += ".transpose({})".format(axes)
         code = self.render("einsum.jinja", ctx)
         del ctx.term
 
         return code
+
+    @staticmethod
+    def _form_einsum_spec(ctx, term):
+        """Form the subscripts specification for the einsum call.
+
+        Indices are mapped to single letters, since the names of the dummies
+        can have multiple characters.
+        """
+
+        names = []
+        for factor in term.indexed_factors:
+            names.extend(i.index for i in factor.indices)
+            continue
+        names.extend(i.index for i in ctx.indices)
+        uniq = list(dict.fromkeys(names))
+
+        if all(len(i) == 1 and i.isalpha() for i in uniq):
+            mapping = {i: i for i in uniq}
+        else:
+            letters = string.ascii_lowercase + string.ascii_uppercase
+            if len(uniq) > len(letters):
+                raise ValueError("Too many indices for einsum", uniq)
+            mapping = {v: letters[k] for k, v in enumerate(uniq)}
+
+        ins = ",".join(
+            "".join(mapping[i.index] for i in factor.indices)
+            for factor in term.indexed_factors
+        )
+        out = "".join(mapping[i.index] for i in ctx.indices)
+        return "{}->{}".format(ins, out)
 
     def print_out_of_use(self, event: OutOfUse):
         """Remove an used intermediate tensor."""

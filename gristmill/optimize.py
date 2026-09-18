@@ -133,6 +133,7 @@ def optimize(
     rand_constr=False,
     remove_shallow=True,
     res_at_end=True,
+    lhs_symm=False,
     stats=None,
 ) -> typing.List[TensorDef]:
     """Optimize the evaluation of the given tensor computations.
@@ -229,6 +230,21 @@ def optimize(
         intermediates and results will be interleaved together, which can be
         more beneficial for freeing the memory used by some intermediates.
 
+    lhs_symm
+        If the symmetry of the left-hand sides of the computations is to be
+        used.  Each computation whose base has a symmetry set in the drudge by
+        :py:meth:`drudge.Drudge.set_symm` is replaced by its symmetry seed from
+        :py:meth:`drudge.TensorDef.symm_reduce`, which contains only one
+        representative term for each orbit of the terms under the symmetry
+        group.  The seeds are optimized together with the other computations
+        and become intermediates, while the original computations are recovered
+        by assembly steps consisting of only additions, which are placed
+        according to the dependencies among the computations.  Computations
+        whose bases have no symmetry set are passed through unchanged.  Note
+        that this is an alternative optimization strategy rather than a
+        guarantee of lower cost, so the FLOP costs with and without it are
+        advised to be compared.
+
     stats
         For developers, when a mapping is given, some execution statistics will
         be dumped into it for analytics.
@@ -257,6 +273,11 @@ def optimize(
         drop_cutoff = 2
         req_an_opt = True
 
+    if lhs_symm:
+        computs, assemblies, seed_map = _reduce_targets(computs)
+    else:
+        assemblies, seed_map = [], {}
+
     opt = _Optimizer(
         computs,
         substs=substs,
@@ -273,7 +294,144 @@ def optimize(
         stats=stats,
     )
 
-    return opt.optimize(res_at_end=res_at_end)
+    res = opt.optimize(res_at_end=res_at_end)
+    if len(assemblies) > 0:
+        res = _insert_assemblies(res, assemblies, seed_map, res_at_end)
+
+    return res
+
+
+def _reduce_targets(computs):
+    """Reduce the computations by the symmetry of their left-hand sides.
+
+    Computations whose bases have symmetry set in the drudge are replaced by
+    their symmetry seeds, with the assembly steps kept aside.  Other
+    computations are passed through unchanged.
+
+    Returns
+    -------
+
+    The new computations, the assembly steps, and the mapping from the bases of
+    the seeds to the bases of the original computations.
+
+    """
+
+    res = []
+    assemblies = []
+    seed_map = {}
+
+    for comput in computs:
+        n_exts = len(comput.exts)
+        if n_exts > 1:
+            group = comput.drudge.get_symm(comput.base, n_exts)
+        else:
+            group = None
+
+        if group is None:
+            res.append(comput)
+            continue
+
+        seed, assembly = comput.symm_reduce()
+        res.append(seed)
+        assemblies.append(assembly)
+        seed_map[seed.base] = comput.base
+        continue
+
+    return res, assemblies, seed_map
+
+
+def _insert_assemblies(eval_seq, assemblies, seed_map, res_at_end):
+    """Insert the assembly steps of symmetry seeds into an evaluation sequence.
+
+    The seeds are marked as intermediates, and the combined sequence is ordered
+    topologically according to the dependencies among all the definitions, with
+    the original order kept as much as possible.  With results at the end, the
+    assembly steps are preferred to be placed at the end of the sequence, or
+    they are preferred to follow their seeds directly.  In both cases, a result
+    needed by another computation is assembled before its consumer.
+    """
+
+    defs = list(eval_seq)
+    n_defs = len(defs)
+
+    # Preferred position of each definition.
+    prios = [float(i) for i in range(n_defs)]
+
+    seed_idxes = {}
+    for idx, def_ in enumerate(defs):
+        if def_.base in seed_map:
+            def_.if_interm = True
+            seed_idxes[def_.base] = idx
+        continue
+    assert len(seed_idxes) == len(seed_map)
+
+    orig2seed = {v: k for k, v in seed_map.items()}
+    for idx, assembly in enumerate(assemblies):
+        assembly.if_interm = False
+        seed_idx = seed_idxes[orig2seed[assembly.base]]
+        prios.append(n_defs + idx if res_at_end else seed_idx + 0.5)
+        defs.append(assembly)
+        continue
+
+    # Dependencies by the appearance of the labels of the bases.
+    label2idx = {}
+    for idx, def_ in enumerate(defs):
+        base = def_.base
+        label = base.label if hasattr(base, "label") else base
+        if label in label2idx:
+            raise ValueError(
+                "Duplicate base in the evaluation sequence",
+                base,
+                "possibly clashing with a symmetry seed",
+            )
+        label2idx[label] = idx
+        continue
+
+    n_pends = [0 for _ in defs]
+    dependants = [[] for _ in defs]
+    all_deps = []
+    for idx, def_ in enumerate(defs):
+        deps = {label2idx[i] for i in def_.free_vars if i in label2idx} - {idx}
+        all_deps.append(deps)
+        n_pends[idx] = len(deps)
+        for i in deps:
+            dependants[i].append(idx)
+            continue
+        continue
+
+    # A definition needed by an earlier one is pulled forward, rather than
+    # having its consumer pushed back.  The propagation converges since the
+    # dependencies are acyclic.
+    changed = True
+    while changed:
+        changed = False
+        for idx, deps in enumerate(all_deps):
+            for i in deps:
+                if prios[i] > prios[idx]:
+                    prios[i] = prios[idx]
+                    changed = True
+                continue
+            continue
+        continue
+
+    # Kahn's algorithm with the preferred positions as the priorities.
+    ready = [(prios[i], i) for i in range(len(defs)) if n_pends[i] == 0]
+    heapq.heapify(ready)
+    res = []
+    while len(ready) > 0:
+        _, idx = heapq.heappop(ready)
+        res.append(defs[idx])
+        for i in dependants[idx]:
+            n_pends[i] -= 1
+            if n_pends[i] == 0:
+                heapq.heappush(ready, (prios[i], i))
+            continue
+        continue
+
+    if len(res) != len(defs):
+        raise ValueError("Cyclic dependency among the computations")
+
+    return res
 
 
 #

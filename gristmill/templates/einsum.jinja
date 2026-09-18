@@ -10,14 +10,13 @@
     {%- endif -%}
     {{ ' * ' }}
 {%- endif -%}
+{% if term.direct_expr is defined and term.direct_expr is not none -%}
+{{ term.direct_expr }}
+{% else -%}
 {{ einsum }}(
-{{ cont_indent | form_indent }}"
-{%- for factor in term.indexed_factors %}
-    {%- for i in factor.indices %}{{ i.index }}{% endfor %}
-    {%- if not loop.last %},{% endif %}
-{% endfor %}->{% for i in indices %}{{ i.index }}{% endfor -%}
-", {% for factor in term.indexed_factors -%}
+{{ cont_indent | form_indent }}"{{ term.einsum_spec }}", {% for factor in term.indexed_factors -%}
     {{ factor.base }}{% if not loop.last %}, {% endif %}
 {%- endfor %}
 
 )
+{% endif %}

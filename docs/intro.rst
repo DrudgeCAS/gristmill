@@ -14,3 +14,14 @@ whether from the gristmill optimizer or not, the code printers
 :py:class:`EinsumPrinter`, and :py:class:`OMEinsumPrinter` can be used to
 generate code automatically.  The exact form of the generated code is very
 tunable.
+
+CCD code-generation example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following example derives a CCD doubles residual, enables left-hand-side
+symmetry reduction during optimization, and shows how the same optimized
+evaluation sequence can be printed as blockwise einsum code or BLAS-based
+Fortran.  It returns source strings rather than writing generated files.
+
+.. literalinclude:: examples/ccd_codegen.py
+   :language: python

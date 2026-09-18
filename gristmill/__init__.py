@@ -8,9 +8,12 @@ from .generate import (
     NaiveCodePrinter,
     CPrinter,
     FortranPrinter,
+    BlasFortranPrinter,
     EinsumPrinter,
     OMEinsumPrinter,
     mangle_base,
+    BlockSpec,
+    split_input_blocks,
 )
 from .optimize import optimize, verify_eval_seq, ContrStrat, RepeatedTermsStrat
 from .utils import get_flop_cost
@@ -28,6 +31,9 @@ __all__ = [
     "NaiveCodePrinter",
     "CPrinter",
     "FortranPrinter",
+    "BlasFortranPrinter",
     "EinsumPrinter",
     "OMEinsumPrinter",
+    "BlockSpec",
+    "split_input_blocks",
 ]
